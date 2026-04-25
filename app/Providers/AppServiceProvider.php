@@ -45,6 +45,11 @@ class AppServiceProvider extends ServiceProvider
                 return null;
             }
         });
+
+        // Register AccountFlagsService as request-scoped so the per-request cache
+        // persists across a single HTTP request or console command, but is reset
+        // between requests / queue jobs / Octane workers (avoids stale state).
+        $this->app->scoped(\App\Domain\AccountProvisioning\Services\AccountFlagsService::class);
     }
 
     /**

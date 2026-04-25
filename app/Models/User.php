@@ -187,6 +187,45 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
+     * Get the account flag row (reviewer/demo provisioning bypasses).
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Domain\AccountProvisioning\Models\AccountFlag, $this>
+     */
+    public function accountFlag(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(\App\Domain\AccountProvisioning\Models\AccountFlag::class);
+    }
+
+    /**
+     * Resolve the user's effective KYC level as an integer, applying any
+     * active AccountFlag override. When no flag override is present, the
+     * real `kyc_level` ENUM column (none/basic/enhanced/full) is mapped
+     * to its numeric tier (0/1/2/3).
+     */
+    public function effectiveKycLevel(): int
+    {
+        $service = app(\App\Domain\AccountProvisioning\Services\AccountFlagsService::class);
+        $override = $service->kycOverrideLevel($this);
+
+        if ($override !== null) {
+            return $override;
+        }
+
+        $raw = $this->kyc_level ?? 0;
+
+        if (is_int($raw)) {
+            return $raw;
+        }
+
+        return match ($raw) {
+            'basic'    => 1,
+            'enhanced' => 2,
+            'full'     => 3,
+            default    => 0,
+        };
+    }
+
+    /**
      * Get the bank preferences for the user.
      *
      * @return HasMany<UserBankPreference, $this>

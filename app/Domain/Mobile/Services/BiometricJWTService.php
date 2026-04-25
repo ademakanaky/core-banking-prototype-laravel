@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\Mobile\Services;
 
+use App\Domain\AccountProvisioning\Enums\BypassType;
+use App\Domain\AccountProvisioning\Services\AccountFlagsService;
 use App\Domain\Mobile\Contracts\BiometricJWTServiceInterface;
 use App\Domain\Mobile\Exceptions\BiometricJWTException;
 use App\Domain\Mobile\Models\MobileDevice;
@@ -57,8 +59,9 @@ class BiometricJWTService implements BiometricJWTServiceInterface
 
     private int $ttlSeconds;
 
-    public function __construct()
-    {
+    public function __construct(
+        private readonly AccountFlagsService $flags,
+    ) {
         $this->secret = $this->getSecret();
         $this->ttlSeconds = (int) config('mobile.biometric_jwt.ttl_seconds', self::DEFAULT_TTL_SECONDS);
     }
@@ -216,6 +219,23 @@ class BiometricJWTService implements BiometricJWTServiceInterface
         }
 
         return $payload;
+    }
+
+    /**
+     * Verify device attestation for a specific authenticated user.
+     *
+     * Short-circuits to true when the user has an active review-account flag
+     * with bypass_device_attestation=true. Otherwise delegates to
+     * verifyDeviceAttestation(). The bypass emits a structured log line via
+     * AccountFlagsService::hasReviewBypass().
+     */
+    public function verifyDeviceAttestationForUser(User $user, string $attestation, string $deviceType): bool
+    {
+        if ($this->flags->hasReviewBypass($user, BypassType::DEVICE_ATTESTATION)) {
+            return true;
+        }
+
+        return $this->verifyDeviceAttestation($attestation, $deviceType);
     }
 
     /**

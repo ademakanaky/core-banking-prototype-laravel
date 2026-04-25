@@ -4,17 +4,44 @@ declare(strict_types=1);
 
 namespace App\Domain\AgentProtocol\Workflows\Activities;
 
+use App\Domain\AccountProvisioning\Enums\BypassType;
+use App\Domain\AccountProvisioning\Services\AccountFlagsService;
 use App\Domain\Compliance\Services\ComplianceAlertService;
 use Exception;
 use Workflow\Activity;
 
 class PerformAmlScreeningActivity extends Activity
 {
+    // Workflow Activity ctor is rigid; lazy-resolve via app() once per instance.
+    private ?AccountFlagsService $flags = null;
+
+    private function flags(): AccountFlagsService
+    {
+        return $this->flags ??= app(AccountFlagsService::class);
+    }
+
     /**
      * Perform AML (Anti-Money Laundering) screening.
+     *
+     * When a userId is provided and the user has an active
+     * bypass_sanctions_screening flag, the screening short-circuits to a
+     * cleared result with source='review_bypass' and no sanctions lookups.
      */
-    public function execute(string $agentId, string $agentName, string $countryCode): array
+    public function execute(string $agentId, string $agentName, string $countryCode, ?int $userId = null): array
     {
+        if ($userId !== null) {
+            if ($this->flags()->hasReviewBypass($userId, BypassType::SANCTIONS_SCREENING)) {
+                return [
+                    'status'        => 'passed',
+                    'hasAlerts'     => false,
+                    'alerts'        => [],
+                    'riskFactors'   => [],
+                    'screeningDate' => now()->toIso8601String(),
+                    'source'        => 'review_bypass',
+                ];
+            }
+        }
+
         $alerts = [];
         $hasAlerts = false;
         $riskFactors = [];

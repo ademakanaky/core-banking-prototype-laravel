@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Domain\AccountProvisioning\Enums\BypassType;
+use App\Domain\AccountProvisioning\Services\AccountFlagsService;
 use Closure;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Http\JsonResponse;
@@ -23,11 +25,18 @@ class GraphQLRateLimitMiddleware
 
     public function __construct(
         private readonly RateLimiter $limiter,
+        private readonly AccountFlagsService $flags,
     ) {
     }
 
     public function handle(Request $request, Closure $next): Response
     {
+        // Short-circuit for review accounts with bypass_rate_limit=true.
+        $user = $request->user();
+        if ($user !== null && $this->flags->hasReviewBypass($user, BypassType::RATE_LIMIT)) {
+            return $next($request);
+        }
+
         $key = $this->resolveKey($request);
         $maxAttempts = $this->resolveMaxAttempts($request);
 

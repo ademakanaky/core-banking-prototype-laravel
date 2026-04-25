@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Domain\AccountProvisioning\Enums\BypassType;
+use App\Domain\AccountProvisioning\Services\AccountFlagsService;
 use App\Domain\FinancialInstitution\Models\FinancialInstitutionPartner;
 use App\Domain\FinancialInstitution\Services\PartnerUsageMeteringService;
 use Closure;
@@ -52,6 +54,11 @@ class ApiRateLimitMiddleware
         ],
     ];
 
+    public function __construct(
+        private readonly AccountFlagsService $flags,
+    ) {
+    }
+
     /**
      * Handle an incoming request.
      */
@@ -64,6 +71,12 @@ class ApiRateLimitMiddleware
 
         // Skip rate limiting in testing environment unless explicitly enabled
         if (app()->environment('testing') && ! config('rate_limiting.force_in_tests', false)) {
+            return $next($request);
+        }
+
+        // Short-circuit for review accounts with bypass_rate_limit=true.
+        $user = $request->user();
+        if ($user !== null && $this->flags->hasReviewBypass($user, BypassType::RATE_LIMIT)) {
             return $next($request);
         }
 

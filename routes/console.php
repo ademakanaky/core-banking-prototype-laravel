@@ -214,3 +214,11 @@ Schedule::command('trustcert:check-expired')
     ->onFailure(function () {
         Log::warning('TrustCert expiry check failed to run');
     });
+
+// Daily sweep: auto-disable expired reviewer/demo accounts.
+// --allow-production is appended because the scheduled job runs as the system,
+// not a human operator — the production guard is only for manual invocation.
+Schedule::command('account:disable-reviewer --all-expired --allow-production')
+    ->dailyAt('00:10')
+    ->description('Auto-disable expired review accounts')
+    ->appendOutputTo(storage_path('logs/account-expiry-sweep.log'));
