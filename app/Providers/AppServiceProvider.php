@@ -106,5 +106,27 @@ class AppServiceProvider extends ServiceProvider
             config(['app.rate_limits.api' => config('demo.rate_limits.api', 60)]);
             config(['app.rate_limits.transactions' => config('demo.rate_limits.transactions', 10)]);
         }
+
+        // Register MCP-supported OAuth scopes with Passport. Without this, the OAuth
+        // server rejects an /oauth/authorize call carrying any of our custom scopes
+        // (accounts:read, payments:write, sms:send, ...) with `invalid_scope` before
+        // the consent view is ever rendered.
+        $mcpScopes = (array) config('mcp.scopes', []);
+        if ($mcpScopes !== []) {
+            \Laravel\Passport\Passport::tokensCan($mcpScopes);
+        }
+
+        // Override Passport's default authorization view with the branded MCP consent
+        // screen. The closure receives Passport's view parameters (client, user, scopes,
+        // request, authToken). We forward the parameter bag to our controller so it can
+        // emit Passport's `authToken` as the form's hidden `auth_token` field — without
+        // it the approve/deny POST is rejected with InvalidAuthTokenException.
+        \Laravel\Passport\Passport::authorizationView(function (array $parameters): \Symfony\Component\HttpFoundation\Response {
+            /** @var \App\Domain\MCP\Auth\ConsentScreenController $controller */
+            $controller = app(\App\Domain\MCP\Auth\ConsentScreenController::class);
+            $view = $controller(request(), $parameters);
+
+            return response($view->render());
+        });
     }
 }

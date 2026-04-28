@@ -861,3 +861,11 @@ Route::prefix('foodo')->group(function () {
 // SEO routes - Sitemap and Robots.txt
 Route::get('/sitemap.xml', [App\Http\Controllers\SitemapController::class, 'index'])->name('sitemap');
 Route::get('/robots.txt', [App\Http\Controllers\SitemapController::class, 'robots'])->name('robots');
+
+Route::get('/.well-known/oauth-authorization-server', App\Domain\MCP\Discovery\AuthorizationServerMetadataController::class)
+    ->middleware(['throttle:mcp.discovery'])
+    ->name('mcp.discovery.authorization-server');
+
+Route::post('/oauth/register', App\Domain\MCP\Auth\DynamicClientRegistrationController::class)
+    ->middleware(['api', 'throttle:5,1'])
+    ->name('mcp.oauth.register');

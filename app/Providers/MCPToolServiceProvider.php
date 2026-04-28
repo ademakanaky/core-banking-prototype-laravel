@@ -24,9 +24,13 @@ use App\Domain\AI\MCP\Tools\MachinePay\MppPaymentTool;
 use App\Domain\AI\MCP\Tools\Payment\PaymentStatusTool;
 use App\Domain\AI\MCP\Tools\Payment\TransferTool;
 use App\Domain\AI\MCP\Tools\SMS\SmsSendTool;
+use App\Domain\AI\MCP\Tools\Transaction\SpendingAnalysisTool;
+use App\Domain\AI\MCP\Tools\Transaction\TransactionQueryTool;
 use App\Domain\AI\MCP\Tools\VisaCli\VisaCliCardsTool;
 use App\Domain\AI\MCP\Tools\VisaCli\VisaCliPaymentTool;
 use App\Domain\AI\MCP\Tools\X402\X402PaymentTool;
+use App\Domain\MCP\Tools\Ramp\RampStartTool;
+use App\Domain\MCP\Tools\Ramp\RampStatusTool;
 use Exception;
 use Illuminate\Support\ServiceProvider;
 use Log;
@@ -54,6 +58,10 @@ class MCPToolServiceProvider extends ServiceProvider
         // Payment Tools
         TransferTool::class,
         PaymentStatusTool::class,
+
+        // Transaction Tools
+        TransactionQueryTool::class,
+        SpendingAnalysisTool::class,
 
         // Exchange Tools
         QuoteTool::class,
@@ -86,6 +94,10 @@ class MCPToolServiceProvider extends ServiceProvider
 
         // SMS Tools
         SmsSendTool::class,
+
+        // Ramp Tools (on/off-ramp via Stripe Bridge)
+        RampStartTool::class,
+        RampStatusTool::class,
     ];
 
     /**
