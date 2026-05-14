@@ -3203,16 +3203,16 @@
         },
         {
             "name": "google/gax",
-            "version": "v1.42.3",
+            "version": "v1.42.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/googleapis/gax-php.git",
-                "reference": "9dce5145169f2390ef2500d638c3cb5632054a96"
+                "reference": "9b1f5fb68960a9020e34fdb88583bcd43779e4fd"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/googleapis/gax-php/zipball/9dce5145169f2390ef2500d638c3cb5632054a96",
-                "reference": "9dce5145169f2390ef2500d638c3cb5632054a96",
+                "url": "https://api.github.com/repos/googleapis/gax-php/zipball/9b1f5fb68960a9020e34fdb88583bcd43779e4fd",
+                "reference": "9b1f5fb68960a9020e34fdb88583bcd43779e4fd",
                 "shasum": ""
             },
             "require": {
@@ -3254,9 +3254,9 @@
             ],
             "support": {
                 "issues": "https://github.com/googleapis/gax-php/issues",
-                "source": "https://github.com/googleapis/gax-php/tree/v1.42.3"
+                "source": "https://github.com/googleapis/gax-php/tree/v1.42.4"
             },
-            "time": "2026-04-30T20:59:42+00:00"
+            "time": "2026-05-11T17:49:55+00:00"
         },
         {
             "name": "google/grpc-gcp",
@@ -4375,16 +4375,16 @@
         },
         {
             "name": "kreait/laravel-firebase",
-            "version": "7.1.0",
+            "version": "7.2.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/beste/laravel-firebase.git",
-                "reference": "8dadce35b23301c21df4e5c05a3ec1dd8359adaa"
+                "reference": "a9f63c54089c9a5aa7bce5cabd9a57b2dcbeed64"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/beste/laravel-firebase/zipball/8dadce35b23301c21df4e5c05a3ec1dd8359adaa",
-                "reference": "8dadce35b23301c21df4e5c05a3ec1dd8359adaa",
+                "url": "https://api.github.com/repos/beste/laravel-firebase/zipball/a9f63c54089c9a5aa7bce5cabd9a57b2dcbeed64",
+                "reference": "a9f63c54089c9a5aa7bce5cabd9a57b2dcbeed64",
                 "shasum": ""
             },
             "require": {
@@ -4392,13 +4392,13 @@
                 "illuminate/notifications": "^11.0 || ^12.0 || ^13.0",
                 "illuminate/support": "^11.0 || ^12.0 || ^13.0",
                 "kreait/firebase-php": "^8.0",
-                "php": "~8.2.0 || ~8.3.0 || ~8.4.0 || ~8.5.0",
-                "symfony/cache": "^6.1.2 || ^7.0.3"
+                "php": "~8.3.0 || ~8.4.0 || ~8.5.0",
+                "symfony/cache": "^6.1.2 || ^7.0.3 || ^8.0.8"
             },
             "require-dev": {
                 "laravel/pint": "^1.22.1",
                 "orchestra/testbench": "^9.0 || ^10.4 || ^11.0",
-                "phpunit/phpunit": "^11.5.23"
+                "phpunit/phpunit": "^12.5.17 || ^13.1.1"
             },
             "type": "library",
             "extra": {
@@ -4438,7 +4438,7 @@
             ],
             "support": {
                 "issues": "https://github.com/beste/laravel-firebase/issues",
-                "source": "https://github.com/beste/laravel-firebase/tree/7.1.0"
+                "source": "https://github.com/beste/laravel-firebase/tree/7.2.1"
             },
             "funding": [
                 {
@@ -4446,7 +4446,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-03-19T23:57:10+00:00"
+            "time": "2026-05-07T13:39:14+00:00"
         },
         {
             "name": "laragraph/utils",
@@ -11908,34 +11908,29 @@
         },
         {
             "name": "symfony/cache",
-            "version": "v7.4.9",
+            "version": "v8.0.10",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/cache.git",
-                "reference": "3860fa12a5013b48d445909c6ea07f870e10ba7c"
+                "reference": "8ff96cde73684bfa32b702f5cff1eb83b1fac429"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/cache/zipball/3860fa12a5013b48d445909c6ea07f870e10ba7c",
-                "reference": "3860fa12a5013b48d445909c6ea07f870e10ba7c",
+                "url": "https://api.github.com/repos/symfony/cache/zipball/8ff96cde73684bfa32b702f5cff1eb83b1fac429",
+                "reference": "8ff96cde73684bfa32b702f5cff1eb83b1fac429",
                 "shasum": ""
             },
             "require": {
-                "php": ">=8.2",
+                "php": ">=8.4",
                 "psr/cache": "^2.0|^3.0",
                 "psr/log": "^1.1|^2|^3",
                 "symfony/cache-contracts": "^3.6",
-                "symfony/deprecation-contracts": "^2.5|^3",
                 "symfony/service-contracts": "^2.5|^3",
-                "symfony/var-exporter": "^6.4|^7.0|^8.0"
+                "symfony/var-exporter": "^7.4|^8.0"
             },
             "conflict": {
-                "doctrine/dbal": "<3.6",
                 "ext-redis": "<6.1",
-                "ext-relay": "<0.12.1",
-                "symfony/dependency-injection": "<6.4",
-                "symfony/http-kernel": "<6.4",
-                "symfony/var-dumper": "<6.4"
+                "ext-relay": "<0.12.1"
             },
             "provide": {
                 "psr/cache-implementation": "2.0|3.0",
@@ -11944,16 +11939,16 @@
             },
             "require-dev": {
                 "cache/integration-tests": "dev-master",
-                "doctrine/dbal": "^3.6|^4",
+                "doctrine/dbal": "^4.3",
                 "predis/predis": "^1.1|^2.0",
                 "psr/simple-cache": "^1.0|^2.0|^3.0",
-                "symfony/clock": "^6.4|^7.0|^8.0",
-                "symfony/config": "^6.4|^7.0|^8.0",
-                "symfony/dependency-injection": "^6.4|^7.0|^8.0",
-                "symfony/filesystem": "^6.4|^7.0|^8.0",
-                "symfony/http-kernel": "^6.4|^7.0|^8.0",
-                "symfony/messenger": "^6.4|^7.0|^8.0",
-                "symfony/var-dumper": "^6.4|^7.0|^8.0"
+                "symfony/clock": "^7.4|^8.0",
+                "symfony/config": "^7.4|^8.0",
+                "symfony/dependency-injection": "^7.4|^8.0",
+                "symfony/filesystem": "^7.4|^8.0",
+                "symfony/http-kernel": "^7.4|^8.0",
+                "symfony/messenger": "^7.4|^8.0",
+                "symfony/var-dumper": "^7.4|^8.0"
             },
             "type": "library",
             "autoload": {
@@ -11988,7 +11983,7 @@
                 "psr6"
             ],
             "support": {
-                "source": "https://github.com/symfony/cache/tree/v7.4.9"
+                "source": "https://github.com/symfony/cache/tree/v8.0.10"
             },
             "funding": [
                 {
@@ -12008,7 +12003,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-04-29T13:21:53+00:00"
+            "time": "2026-05-05T08:24:00+00:00"
         },
         {
             "name": "symfony/cache-contracts",
