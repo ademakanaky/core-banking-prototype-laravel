@@ -318,11 +318,15 @@ it('Apple verifier fails closed in production when JWS chain validation fails', 
     expect(IapReceipt::query()->count())->toBe(0);
 });
 
-it('Apple verifier accepts JWS in production when bypass flag is explicitly set', function (): void {
+it('Apple verifier ignores the bypass flag in production and still rejects an unsigned JWS', function (): void {
     $user = User::factory()->create();
     Sanctum::actingAs($user, ['read', 'write', 'delete']);
 
-    // Operator explicitly accepted the risk (staging environment without certs).
+    // Operator misconfigured prod env: bypass=true should NOT be honoured in
+    // production — letting it through is a full auth bypass on the entire
+    // Apple IAP surface (any authenticated user could forge a JWS with
+    // arbitrary originalTransactionId / productId / expiresDate). The
+    // verifier must drop back to real chain validation regardless.
     $this->app['env'] = 'production';
     config(['subscription.iap.apple_jws_verification_bypass' => true]);
 
@@ -336,6 +340,33 @@ it('Apple verifier accepts JWS in production when bypass flag is explicitly set'
         'currency'              => 'EUR',
     ], [
         'Idempotency-Key' => 'idem-bypass-set-bbbbbbbbbbbbbbbb',
+    ]);
+
+    $response->assertStatus(422);
+    $response->assertJsonPath('error.code', 'ERR_SUB_001');
+    expect(IapSubscription::query()->count())->toBe(0);
+});
+
+it('Apple verifier still honours the bypass flag in staging (non-production)', function (): void {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user, ['read', 'write', 'delete']);
+
+    // Staging without provisioned certs is the only legitimate bypass use
+    // case. Anything that is NOT 'production' (and NOT 'local'/'testing',
+    // which short-circuit even earlier) should accept the flag.
+    $this->app['env'] = 'staging';
+    config(['subscription.iap.apple_jws_verification_bypass' => true]);
+
+    $jws = makeAppleJws();
+
+    $response = $this->postJson('/api/v1/subscription/iap/verify', [
+        'platform'              => 'apple_iap',
+        'receipt'               => $jws,
+        'originalTransactionId' => 'apple-orig-tx-staging-1',
+        'productId'             => 'zelta_pro_monthly',
+        'currency'              => 'EUR',
+    ], [
+        'Idempotency-Key' => 'idem-bypass-staging-aaaaaaaaaaaaaa',
     ]);
 
     $response->assertStatus(200);

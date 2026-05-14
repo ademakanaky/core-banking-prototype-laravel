@@ -192,13 +192,30 @@ final class AppleReceiptVerifier
             return $decoded;
         }
 
-        $bypass = (bool) config('subscription.iap.apple_jws_verification_bypass', false);
-        if (! $bypass) {
+        // The bypass flag is honoured ONLY outside production. Even if an
+        // operator sets APPLE_JWS_VERIFICATION_BYPASS=true on a production
+        // env (accidentally, or via a leaked config), we MUST NOT skip the
+        // chain check — the bypass is a full auth-bypass for the entire
+        // Apple IAP surface (any authenticated user could forge a JWS with
+        // arbitrary originalTransactionId / productId / expiresDate). The
+        // production-environment gate is the same pattern used by other
+        // bypass paths in this codebase (see CLAUDE.md "Webhook auth bypass").
+        $bypassRequested = (bool) config('subscription.iap.apple_jws_verification_bypass', false);
+        if ($bypassRequested && app()->environment('production')) {
+            Log::error('iap.apple.jws.bypass_rejected_in_production', [
+                'environment' => app()->environment(),
+                'reason'      => 'APPLE_JWS_VERIFICATION_BYPASS=true ignored in production; running chain validation',
+            ]);
+            $bypassRequested = false;
+        }
+
+        if (! $bypassRequested) {
             $this->verifyJwsChain($parts[0], $parts[1], $parts[2]);
         } else {
-            // Bypass flag is set — operator has explicitly accepted the risk
-            // (typically for a staging environment without provisioned certs).
-            // We log every bypass so it's visible in audit logs.
+            // Bypass flag is honoured (non-production env) — operator has
+            // explicitly accepted the risk, typically for a staging
+            // environment without provisioned certs. Log every bypass so
+            // it's visible in audit logs.
             Log::warning('iap.apple.jws.signature_verify_bypassed', [
                 'environment' => app()->environment(),
                 'reason'      => 'APPLE_JWS_VERIFICATION_BYPASS=true',
@@ -261,10 +278,19 @@ final class AppleReceiptVerifier
         }
 
         // 2. Decode certs (base64, NOT base64url — JWS spec §4.1.6).
+        // Real Apple certs are <2 KB DER (~3 KB base64). Cap each x5c entry
+        // at 16 KB before we allocate / hand to OpenSSL so a malformed JWS
+        // can't drag the request into a memory-DoS path.
         $pems = [];
         foreach ($x5c as $i => $entry) {
             if (! is_string($entry) || $entry === '') {
                 throw $this->chainFailure('x5c_entry_invalid', "Apple JWS x5c[{$i}] is not a non-empty string.");
+            }
+            if (strlen($entry) > 16384) {
+                throw $this->chainFailure(
+                    'x5c_entry_too_large',
+                    "Apple JWS x5c[{$i}] exceeds 16 KB cap (real Apple certs are <3 KB base64).",
+                );
             }
             $derBase64 = preg_replace('/\s+/', '', $entry) ?? '';
             $der = base64_decode($derBase64, true);
@@ -320,12 +346,12 @@ final class AppleReceiptVerifier
                 throw $this->chainFailure("{$label}_parse_failed", "Apple JWS {$label} cert could not be parsed.");
             }
 
-            $notBefore = isset($parsed['validFrom_time_t']) && is_int($parsed['validFrom_time_t'])
-                ? Carbon::createFromTimestampUTC($parsed['validFrom_time_t'])
-                : null;
-            $notAfter = isset($parsed['validTo_time_t']) && is_int($parsed['validTo_time_t'])
-                ? Carbon::createFromTimestampUTC($parsed['validTo_time_t'])
-                : null;
+            // openssl_x509_parse() documents these as Unix timestamps, but on
+            // 32-bit PHP or some OpenSSL builds the field can come back as a
+            // numeric string. Accept both rather than fail-closed on every
+            // production request.
+            $notBefore = $this->parseCertTimestamp($parsed['validFrom_time_t'] ?? null);
+            $notAfter = $this->parseCertTimestamp($parsed['validTo_time_t'] ?? null);
 
             if ($notBefore === null || $notAfter === null) {
                 throw $this->chainFailure(
@@ -558,6 +584,25 @@ final class AppleReceiptVerifier
         ], $context));
 
         return new IapVerificationException('Apple JWS chain validation failed: ' . $message);
+    }
+
+    /**
+     * openssl_x509_parse()'s `validFrom_time_t` / `validTo_time_t` are
+     * documented as Unix timestamps but return as int on most builds and as
+     * numeric strings on some (32-bit PHP, certain OpenSSL builds with
+     * post-2038 dates). Accept either; reject anything else so callers can
+     * fail closed.
+     */
+    private function parseCertTimestamp(mixed $value): ?Carbon
+    {
+        if (is_int($value)) {
+            return Carbon::createFromTimestampUTC($value);
+        }
+        if (is_string($value) && ctype_digit($value)) {
+            return Carbon::createFromTimestampUTC((int) $value);
+        }
+
+        return null;
     }
 
     /**
