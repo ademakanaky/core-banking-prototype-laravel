@@ -280,53 +280,322 @@ it('appends an event to iap_subscription_events on first verify', function () {
 });
 
 /**
- * Regression: in production (no local/testing bypass), the Apple verifier must
- * throw IapVerificationException when JWS chain validation is not implemented
- * and the explicit operator bypass flag is unset. The fail-closed behaviour
- * was added in the slice 2 code-review pass after the verifier was found to
- * silently accept unverified JWS payloads in non-local environments.
+ * Regression: in production with the bundled Apple Root CA G3 pinned, the
+ * verifier must reject a JWS that does NOT chain to the pinned root. The
+ * forged-receipt fixture here is signed by nothing real — the placeholder
+ * signature + missing chain means chain validation fails and we surface
+ * ERR_SUB_001 to the user.
  */
-it('Apple verifier fails closed in production when JWS bypass is unset', function (): void {
+it('Apple verifier fails closed in production when JWS chain validation fails', function (): void {
     $user = User::factory()->create();
     Sanctum::actingAs($user, ['read', 'write', 'delete']);
 
-    // Pretend we are in production but leave APPLE_JWS_VERIFICATION_BYPASS unset
-    // (config default is false → verifier must throw on the JWS path).
+    // Pretend we are in production with the production-default config:
+    //   - Bundled Apple Root CA G3 pinned
+    //   - APPLE_JWS_VERIFICATION_BYPASS unset (defaults to false)
     $this->app['env'] = 'production';
-    config(['subscription.iap.apple_jws_verification_bypass' => false]);
+    config([
+        'subscription.iap.apple.root_ca_path'         => storage_path('app/apple/AppleRootCA-G3.cer'),
+        'subscription.iap.apple.root_ca_fingerprints' => [
+            '63343ABFB89A6A03EBB57E9B3F5FA7BE7C4F5C756F3017B3A8C488C3653E9179',
+        ],
+        'subscription.iap.apple_jws_verification_bypass' => false,
+    ]);
 
+    // makeAppleJws() emits a stub JWS with an empty x5c — chain validation
+    // rejects it (alg=ES256 fails because we have <3 certs).
     $jws = makeAppleJws();
 
     $response = $this->postJson('/api/v1/subscription/iap/verify', [
-        'store'   => 'apple',
-        'receipt' => $jws,
+        'platform'              => 'apple_iap',
+        'receipt'               => $jws,
+        'originalTransactionId' => 'apple-orig-tx-001',
+        'productId'             => 'zelta_pro_monthly',
+        'currency'              => 'EUR',
     ], [
         'Idempotency-Key' => 'idem-fail-closed-aaaaaaaaaaaaaaaa',
     ]);
 
     $response->assertStatus(422);
-    expect($response->json('code'))->toBe('ERR_SUB_001');
+    $response->assertJsonPath('error.code', 'ERR_SUB_001');
     expect(IapSubscription::query()->count())->toBe(0);
     expect(IapReceipt::query()->count())->toBe(0);
 });
 
-it('Apple verifier accepts JWS in production when bypass flag is explicitly set', function (): void {
+it('Apple verifier ignores the bypass flag in production and still rejects an unsigned JWS', function (): void {
     $user = User::factory()->create();
     Sanctum::actingAs($user, ['read', 'write', 'delete']);
 
-    // Operator explicitly accepted the risk (staging environment without certs).
+    // Operator misconfigured prod env: bypass=true should NOT be honoured in
+    // production — letting it through is a full auth bypass on the entire
+    // Apple IAP surface (any authenticated user could forge a JWS with
+    // arbitrary originalTransactionId / productId / expiresDate). The
+    // verifier must drop back to real chain validation regardless.
     $this->app['env'] = 'production';
     config(['subscription.iap.apple_jws_verification_bypass' => true]);
 
     $jws = makeAppleJws();
 
     $response = $this->postJson('/api/v1/subscription/iap/verify', [
-        'store'   => 'apple',
-        'receipt' => $jws,
+        'platform'              => 'apple_iap',
+        'receipt'               => $jws,
+        'originalTransactionId' => 'apple-orig-tx-001',
+        'productId'             => 'zelta_pro_monthly',
+        'currency'              => 'EUR',
     ], [
-        'Idempotency-Key' => 'idem-bypass-set-bbbbbbbbbbbbbbbbb',
+        'Idempotency-Key' => 'idem-bypass-set-bbbbbbbbbbbbbbbb',
+    ]);
+
+    $response->assertStatus(422);
+    $response->assertJsonPath('error.code', 'ERR_SUB_001');
+    expect(IapSubscription::query()->count())->toBe(0);
+});
+
+it('Apple verifier still honours the bypass flag in staging (non-production)', function (): void {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user, ['read', 'write', 'delete']);
+
+    // Staging without provisioned certs is the only legitimate bypass use
+    // case. Anything that is NOT 'production' (and NOT 'local'/'testing',
+    // which short-circuit even earlier) should accept the flag.
+    $this->app['env'] = 'staging';
+    config(['subscription.iap.apple_jws_verification_bypass' => true]);
+
+    $jws = makeAppleJws();
+
+    $response = $this->postJson('/api/v1/subscription/iap/verify', [
+        'platform'              => 'apple_iap',
+        'receipt'               => $jws,
+        'originalTransactionId' => 'apple-orig-tx-staging-1',
+        'productId'             => 'zelta_pro_monthly',
+        'currency'              => 'EUR',
+    ], [
+        'Idempotency-Key' => 'idem-bypass-staging-aaaaaaaaaaaaaa',
     ]);
 
     $response->assertStatus(200);
     expect(IapSubscription::query()->count())->toBe(1);
 });
+
+/**
+ * End-to-end happy path: a JWS signed by a properly-chained test root, with
+ * the test root's fingerprint pinned. Mirrors the live App Store flow except
+ * the cert authority is synthetic — proves the verify endpoint plumbs the
+ * verifier correctly and reaches the success branch when chain + signature
+ * both validate.
+ */
+it('Apple verifier accepts a properly-signed JWS in production with pinned test root', function (): void {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user, ['read', 'write', 'delete']);
+
+    // Build a synthetic 3-cert chain + a JWS signed by the leaf.
+    $chain = buildAppleJwsTestChain();
+
+    $jws = signJwsWithChain($chain, [
+        'bundleId'              => 'app.zelta',
+        'originalTransactionId' => 'apple-prod-happy-001',
+        'transactionId'         => 'apple-prod-happy-001',
+        'productId'             => 'zelta_pro_monthly',
+        'currency'              => 'EUR',
+        'price'                 => 499,
+        'environment'           => 'Production',
+        'inAppOwnershipType'    => 'PURCHASED',
+    ]);
+
+    $this->app['env'] = 'production';
+    config([
+        'subscription.iap.apple.root_ca_path'            => null,
+        'subscription.iap.apple.root_ca_fingerprints'    => [$chain['rootFingerprint']],
+        'subscription.iap.apple_jws_verification_bypass' => false,
+    ]);
+
+    $response = $this->postJson('/api/v1/subscription/iap/verify', [
+        'platform'              => 'apple_iap',
+        'receipt'               => $jws,
+        'originalTransactionId' => 'apple-prod-happy-001',
+        'productId'             => 'zelta_pro_monthly',
+        'currency'              => 'EUR',
+    ], [
+        'Idempotency-Key' => 'idem-prod-happy-cccccccccccccccc',
+    ]);
+
+    $response->assertStatus(200);
+    expect(IapSubscription::query()->where('original_transaction_id', 'apple-prod-happy-001')->count())->toBe(1);
+});
+
+it('Apple verifier rejects a tampered JWS in production with pinned test root', function (): void {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user, ['read', 'write', 'delete']);
+
+    $chain = buildAppleJwsTestChain();
+    $jws = signJwsWithChain($chain, [
+        'bundleId'              => 'app.zelta',
+        'originalTransactionId' => 'apple-prod-tampered-001',
+        'transactionId'         => 'apple-prod-tampered-001',
+        'productId'             => 'zelta_pro_monthly',
+        'currency'              => 'EUR',
+    ]);
+
+    // Tamper with the payload (flip a byte in segment 1). Signature mismatch.
+    [$h, $p, $s] = explode('.', $jws);
+    $tampered = $h . '.' . substr_replace($p, $p[0] === 'A' ? 'B' : 'A', 0, 1) . '.' . $s;
+
+    $this->app['env'] = 'production';
+    config([
+        'subscription.iap.apple.root_ca_path'            => null,
+        'subscription.iap.apple.root_ca_fingerprints'    => [$chain['rootFingerprint']],
+        'subscription.iap.apple_jws_verification_bypass' => false,
+    ]);
+
+    $response = $this->postJson('/api/v1/subscription/iap/verify', [
+        'platform'              => 'apple_iap',
+        'receipt'               => $tampered,
+        'originalTransactionId' => 'apple-prod-tampered-001',
+        'productId'             => 'zelta_pro_monthly',
+        'currency'              => 'EUR',
+    ], [
+        'Idempotency-Key' => 'idem-prod-tampered-dddddddddddddd',
+    ]);
+
+    $response->assertStatus(422);
+    $response->assertJsonPath('error.code', 'ERR_SUB_001');
+    expect(IapSubscription::query()->count())->toBe(0);
+});
+
+/**
+ * Build a 3-cert test chain (root → intermediate → leaf, all ES256/P-256).
+ *
+ * @return array{
+ *   rootDer: string,
+ *   intermediateDer: string,
+ *   leafDer: string,
+ *   leafKey: OpenSSLAsymmetricKey,
+ *   rootFingerprint: string
+ * }
+ */
+function buildAppleJwsTestChain(): array
+{
+    $configArgs = [
+        'digest_alg'       => 'sha256',
+        'private_key_type' => OPENSSL_KEYTYPE_EC,
+        'curve_name'       => 'prime256v1',
+    ];
+
+    $rootKey = openssl_pkey_new($configArgs);
+    if ($rootKey === false) {
+        throw new RuntimeException('Test chain: failed to generate root key.');
+    }
+    $rootCsr = openssl_csr_new(['commonName' => 'Test Apple Root CA G3'], $rootKey, ['digest_alg' => 'sha256']);
+    if (! $rootCsr instanceof OpenSSLCertificateSigningRequest) {
+        throw new RuntimeException('Test chain: failed to build root CSR.');
+    }
+    $rootCert = openssl_csr_sign($rootCsr, null, $rootKey, 365, ['digest_alg' => 'sha256']);
+    if ($rootCert === false) {
+        throw new RuntimeException('Test chain: failed to sign root cert.');
+    }
+
+    $intKey = openssl_pkey_new($configArgs);
+    if ($intKey === false) {
+        throw new RuntimeException('Test chain: failed to generate intermediate key.');
+    }
+    $intCsr = openssl_csr_new(['commonName' => 'Test Apple WWDR'], $intKey, ['digest_alg' => 'sha256']);
+    if (! $intCsr instanceof OpenSSLCertificateSigningRequest) {
+        throw new RuntimeException('Test chain: failed to build intermediate CSR.');
+    }
+    $intCert = openssl_csr_sign($intCsr, $rootCert, $rootKey, 365, ['digest_alg' => 'sha256']);
+    if ($intCert === false) {
+        throw new RuntimeException('Test chain: failed to sign intermediate cert.');
+    }
+
+    $leafKey = openssl_pkey_new($configArgs);
+    if ($leafKey === false) {
+        throw new RuntimeException('Test chain: failed to generate leaf key.');
+    }
+    $leafCsr = openssl_csr_new(['commonName' => 'Test Leaf'], $leafKey, ['digest_alg' => 'sha256']);
+    if (! $leafCsr instanceof OpenSSLCertificateSigningRequest) {
+        throw new RuntimeException('Test chain: failed to build leaf CSR.');
+    }
+    $leafCert = openssl_csr_sign($leafCsr, $intCert, $intKey, 30, ['digest_alg' => 'sha256']);
+    if ($leafCert === false) {
+        throw new RuntimeException('Test chain: failed to sign leaf cert.');
+    }
+
+    $rootDer = appleTestPemToDer($rootCert);
+    $intDer = appleTestPemToDer($intCert);
+    $leafDer = appleTestPemToDer($leafCert);
+
+    return [
+        'rootDer'         => $rootDer,
+        'intermediateDer' => $intDer,
+        'leafDer'         => $leafDer,
+        'leafKey'         => $leafKey,
+        'rootFingerprint' => strtoupper(hash('sha256', $rootDer)),
+    ];
+}
+
+function appleTestPemToDer(OpenSSLCertificate $cert): string
+{
+    $pem = '';
+    if (! openssl_x509_export($cert, $pem)) {
+        throw new RuntimeException('Test helper: openssl_x509_export failed.');
+    }
+    if (preg_match('/-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----/s', $pem, $m) !== 1) {
+        throw new RuntimeException('Test helper: PEM did not contain a cert block.');
+    }
+    $b64 = (string) preg_replace('/\s+/', '', $m[1]);
+    $der = base64_decode($b64, true);
+    if ($der === false) {
+        throw new RuntimeException('Test helper: PEM body could not be decoded.');
+    }
+
+    return $der;
+}
+
+/**
+ * Sign a payload with a test chain and emit the StoreKit-2-shape JWS string.
+ *
+ * @param array{
+ *   rootDer: string,
+ *   intermediateDer: string,
+ *   leafDer: string,
+ *   leafKey: OpenSSLAsymmetricKey,
+ *   rootFingerprint: string
+ * } $chain
+ * @param array<string, mixed> $payload
+ */
+function signJwsWithChain(array $chain, array $payload): string
+{
+    $header = [
+        'alg' => 'ES256',
+        'x5c' => [
+            base64_encode($chain['leafDer']),
+            base64_encode($chain['intermediateDer']),
+            base64_encode($chain['rootDer']),
+        ],
+    ];
+
+    $headerB64 = rtrim(strtr(base64_encode((string) json_encode($header)), '+/', '-_'), '=');
+    $payloadB64 = rtrim(strtr(base64_encode((string) json_encode($payload)), '+/', '-_'), '=');
+
+    $signed = $headerB64 . '.' . $payloadB64;
+    $derSig = '';
+    openssl_sign($signed, $derSig, $chain['leafKey'], OPENSSL_ALGO_SHA256);
+
+    // Convert DER → raw r||s (mirrors verifier.ecdsaRawToDer).
+    $pos = 2;
+    if ((ord($derSig[1]) & 0x80) !== 0) {
+        $pos = 2 + (ord($derSig[1]) & 0x7F);
+    }
+    $rLen = ord($derSig[$pos + 1]);
+    $r = substr($derSig, $pos + 2, $rLen);
+    $pos += 2 + $rLen;
+    $sLen = ord($derSig[$pos + 1]);
+    $s = substr($derSig, $pos + 2, $sLen);
+    $r = str_pad(ltrim($r, "\x00"), 32, "\x00", STR_PAD_LEFT);
+    $s = str_pad(ltrim($s, "\x00"), 32, "\x00", STR_PAD_LEFT);
+    $rawSig = $r . $s;
+
+    $sigB64 = rtrim(strtr(base64_encode($rawSig), '+/', '-_'), '=');
+
+    return $signed . '.' . $sigB64;
+}
