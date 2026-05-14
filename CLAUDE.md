@@ -178,6 +178,7 @@ Plan B mobile-driven subscriptions (Apple App Store + Google Play). Entry point:
 | `IAP_RECEIPT_PEPPER` empty in prod | `IapReceiptPseudonymiser::pseudonymise()` hard-throws `RuntimeException` on first call. Generate via `openssl rand -hex 32`; set before first verify request |
 | Apple JWS verification bypass slips into prod | `APPLE_JWS_VERIFICATION_BYPASS=true` is the auth bypass for the entire Apple IAP surface. Guard at deployment time (env diff, smoke test that prod verifier rejects a known-bad JWS) |
 | Privy `/passwordless/*` returns 403 "Must specify origin" | `PrivyEmailOtpClient` sends `Origin: <web origin>` from `config('privy.web_origin')` (env: `PRIVY_WEB_ORIGIN`, falls back to `app.url`). Origin must also be on Privy dashboard → Allowed origins. Mobile JWT path is unaffected |
+| `POST /api/v1/notifications/register-device` returns 500 after a Privy account switch | `MobileDeviceService::registerDevice` throws `DeviceTakeoverAttemptException` when the existing `mobile_devices.user_id` doesn't match the caller. The exception now renders **HTTP 409 + `DEVICE_REGISTERED_TO_DIFFERENT_USER`** so mobile clients can distinguish a takeover-blocked registration from a generic outage. Recovery: operator-only `DELETE FROM mobile_devices WHERE device_id = '<uuid>'` (see issue #1059 for credential-bound scoping follow-up) |
 
 ## Notes
 
