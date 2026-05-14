@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Rewards\Services;
 
+use App\Domain\Rewards\Events\Broadcast\QuestCompleted;
 use App\Domain\Rewards\Models\RewardProfile;
 use App\Domain\Rewards\Models\RewardQuest;
 use App\Domain\Rewards\Models\RewardQuestCompletion;
@@ -107,7 +108,7 @@ class RewardsService
             throw new RuntimeException('Quest not found or inactive.');
         }
 
-        return DB::transaction(function () use ($user, $quest) {
+        $result = DB::transaction(function () use ($user, $quest) {
             // Lock the profile row to serialize concurrent completions
             $profile = RewardProfile::where('user_id', $user->id)
                 ->lockForUpdate()
@@ -166,6 +167,22 @@ class RewardsService
                 'completed_at'  => $completion->completed_at->toIso8601String(),
             ];
         });
+
+        // Broadcast after the transaction commits so the WebSocket payload is
+        // never sent for a rolled-back completion.
+        QuestCompleted::dispatch(
+            $user->id,
+            (string) $result['quest_id'],
+            $quest->slug,
+            $quest->title,
+            (int) $result['xp_earned'],
+            (int) $result['points_earned'],
+            (int) $result['new_level'],
+            (bool) $result['level_up'],
+            (string) $result['completed_at'],
+        );
+
+        return $result;
     }
 
     /**

@@ -15,7 +15,9 @@ use App\Domain\Referral\Listeners\CompleteReferralOnKycApproval;
 use App\Domain\Rewards\Listeners\TriggerQuestOnCardCreated;
 use App\Domain\Rewards\Listeners\TriggerQuestOnLogin;
 use App\Domain\Rewards\Listeners\TriggerQuestOnPayment;
+use App\Domain\Rewards\Listeners\TriggerQuestOnProfileUpdated;
 use App\Domain\Rewards\Listeners\TriggerQuestOnShield;
+use App\Domain\User\Events\UserProfileUpdated;
 use App\Domain\VisaCli\Events\VisaCliCardEnrolled;
 use App\Domain\VisaCli\Listeners\SyncVisaCliCardToCardIssuance;
 use Illuminate\Auth\Events\Login;
@@ -49,6 +51,9 @@ class EventServiceProvider extends ServiceProvider
         ],
         ProofOfInnocenceGenerated::class => [
             TriggerQuestOnShield::class,
+        ],
+        UserProfileUpdated::class => [
+            TriggerQuestOnProfileUpdated::class,
         ],
         VisaCliCardEnrolled::class => [
             SyncVisaCliCardToCardIssuance::class,

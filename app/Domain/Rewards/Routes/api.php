@@ -16,10 +16,11 @@ Route::prefix('v1/rewards')->name('api.rewards.')
             ->middleware('api.rate_limit:query')
             ->name('quests');
 
-        Route::post('/quests/{id}/complete', [RewardsController::class, 'completeQuest'])
-            ->middleware('api.rate_limit:mutation')
-            ->whereUuid('id')
-            ->name('quests.complete');
+        // Quest completion is auto-driven by domain events via
+        // QuestTriggerService. The legacy POST /quests/{id}/complete endpoint
+        // and its GraphQL `completeQuest` counterpart were removed because
+        // they let any authenticated caller credit XP without proof the
+        // underlying action actually happened. See PR removing both.
 
         Route::get('/shop', [RewardsController::class, 'shop'])
             ->middleware('api.rate_limit:query')

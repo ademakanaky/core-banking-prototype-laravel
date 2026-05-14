@@ -35,17 +35,6 @@ type RewardShopItem {
     available: Boolean!
 }
 
-type QuestCompletionResult {
-    quest_id: ID!
-    xp_earned: Int!
-    points_earned: Int!
-    new_xp: Int!
-    new_level: Int!
-    new_points: Int!
-    level_up: Boolean!
-    completed_at: String!
-}
-
 type RedemptionResult {
     redemption_id: ID!
     item_id: ID!
@@ -71,10 +60,6 @@ extend type Query {
 }
 
 extend type Mutation {
-    completeQuest(quest_id: ID!): QuestCompletionResult!
-        @guard(with: ["sanctum"])
-        @field(resolver: "App\\GraphQL\\Mutations\\Rewards\\CompleteQuestMutation")
-
     redeemShopItem(item_id: ID!): RedemptionResult!
         @guard(with: ["sanctum"])
         @field(resolver: "App\\GraphQL\\Mutations\\Rewards\\RedeemItemMutation")

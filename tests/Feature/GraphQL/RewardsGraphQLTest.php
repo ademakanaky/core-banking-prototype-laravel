@@ -227,20 +227,11 @@ describe('GraphQL Rewards API', function () {
         expect($data[0]['slug'])->toBe('fee-discount');
     });
 
-    it('completes a quest via mutation', function () {
+    it('rejects the legacy completeQuest mutation (removed from schema)', function () {
+        // The mutation was removed in the rewards-lockdown PR because it let
+        // any authenticated caller credit XP without proof. Completion is now
+        // reachable only via domain-event listeners → QuestTriggerService.
         $user = User::factory()->create();
-
-        $quest = RewardQuest::create([
-            'slug'          => 'first-login',
-            'title'         => 'First Login',
-            'description'   => 'Log in for the first time',
-            'xp_reward'     => 50,
-            'points_reward' => 10,
-            'category'      => 'onboarding',
-            'is_repeatable' => false,
-            'is_active'     => true,
-            'sort_order'    => 1,
-        ]);
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson('/graphql', [
@@ -248,65 +239,20 @@ describe('GraphQL Rewards API', function () {
                     mutation ($quest_id: ID!) {
                         completeQuest(quest_id: $quest_id) {
                             quest_id
-                            xp_earned
-                            points_earned
-                            new_xp
-                            new_level
-                            new_points
-                            level_up
-                            completed_at
                         }
                     }
                 ',
-                'variables' => ['quest_id' => $quest->id],
-            ]);
-
-        $response->assertOk();
-        $json = $response->json();
-        expect($json)->not->toHaveKey('errors');
-        $data = $response->json('data.completeQuest');
-        expect($data['xp_earned'])->toBe(50);
-        expect($data['points_earned'])->toBe(10);
-        expect($data['new_xp'])->toBe(50);
-        expect($data['new_level'])->toBe(1);
-        expect($data['new_points'])->toBe(10);
-        expect($data['level_up'])->toBeFalse();
-        expect($data['completed_at'])->not->toBeNull();
-    });
-
-    it('returns error when completing already-completed non-repeatable quest', function () {
-        $user = User::factory()->create();
-
-        $quest = RewardQuest::create([
-            'slug'          => 'first-login',
-            'title'         => 'First Login',
-            'description'   => 'Log in for the first time',
-            'xp_reward'     => 50,
-            'points_reward' => 10,
-            'category'      => 'onboarding',
-            'is_repeatable' => false,
-            'is_active'     => true,
-            'sort_order'    => 1,
-        ]);
-
-        // Complete once
-        $this->actingAs($user, 'sanctum')
-            ->postJson('/graphql', [
-                'query'     => 'mutation ($quest_id: ID!) { completeQuest(quest_id: $quest_id) { quest_id } }',
-                'variables' => ['quest_id' => $quest->id],
-            ]);
-
-        // Attempt again
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson('/graphql', [
-                'query'     => 'mutation ($quest_id: ID!) { completeQuest(quest_id: $quest_id) { quest_id } }',
-                'variables' => ['quest_id' => $quest->id],
+                'variables' => ['quest_id' => '00000000-0000-0000-0000-000000000000'],
             ]);
 
         $response->assertOk();
         $data = $response->json();
         expect($data)->toHaveKey('errors');
-        expect($data['errors'][0]['message'])->toBe('Quest already completed.');
+        // The mutation field no longer exists; Lighthouse may mask the
+        // detailed schema error as "Internal server error" in production
+        // mode, so assert on the *absence* of a successful data path rather
+        // than the error text.
+        expect($data['data'] ?? null)->toBeNull();
     });
 
     it('redeems a shop item via mutation', function () {
