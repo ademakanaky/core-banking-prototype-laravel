@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Domain\Mobile\Exceptions;
 
 use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * Exception thrown when an attempt is made to register a device that belongs to another user.
@@ -29,6 +31,22 @@ class DeviceTakeoverAttemptException extends Exception
     public function getHttpStatusCode(): int
     {
         return 409; // Conflict
+    }
+
+    /**
+     * Render the exception as an HTTP response.
+     *
+     * Returns 409 so mobile clients can distinguish a takeover-blocked
+     * registration from a generic 500. Existing user identifiers are
+     * deliberately NOT echoed in the response body — that information stays
+     * in the server log via the `context()` array.
+     */
+    public function render(Request $request): JsonResponse
+    {
+        return new JsonResponse([
+            'message' => $this->getMessage(),
+            'error'   => 'DEVICE_REGISTERED_TO_DIFFERENT_USER',
+        ], $this->getHttpStatusCode());
     }
 
     /**
