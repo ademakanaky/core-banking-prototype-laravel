@@ -5,7 +5,7 @@
 @section('seo')
     @include('partials.seo', [
         'title' => 'Changelog | ' . config('brand.name', 'Zelta'),
-        'description' => 'Release history for the Zelta core banking platform. Track every feature shipped, bug fixed, and improvement made — v7.0 through v7.11.0.',
+        'description' => 'Release history for the Zelta core banking platform. Track every feature shipped, bug fixed, and improvement made — v7.0 through v7.13.0.',
         'keywords' => 'changelog, release notes, updates, ' . config('brand.name', 'Zelta') . ', version history, core banking',
     ])
 
@@ -43,6 +43,39 @@
 
             @php
                 $releases = [
+                    [
+                        'version' => 'v7.13.0',
+                        'date' => 'May 15, 2026',
+                        'label' => 'Mobile-Driven IAP Subscriptions + Auth Hardening',
+                        'label_color' => 'purple',
+                        'badge_color' => 'bg-purple-100 text-purple-700 border-purple-200',
+                        'dot_color' => 'bg-purple-500',
+                        'items' => [
+                            'In-App Purchase verification — <code>POST /api/v1/subscriptions/iap/verify</code> exchanges an Apple StoreKit 2 JWS or Google Play subscription token for a Zelta subscription record. Idempotent via <code>(provider, original_transaction_id)</code> unique index; Family-Sharing / stale-receipt / cross-account conflicts surface as HTTP 409 with the mobile-aligned <code>ERR_SUB_002 { kind, attemptedSource, existingSubscription }</code> envelope.',
+                            'Apple JWS chain validation — fail-closed verifier pins the trust anchor to Apple Root CA G3 (fingerprint <code>63343ABF…E9179</code>) and performs an ES256 signature check with x5c chain validation, no new vendor deps. Staging-only <code>APPLE_JWS_VERIFICATION_BYPASS</code> is hard-rejected in production.',
+                            'Google Play RTDN ingestion — Cloud Pub/Sub push subscription delivers subscription state transitions through the same <code>processed_webhook_events</code> idempotency path as Apple App Store Server Notifications V2. Receipts are HMAC-pseudonymised by <code>IapReceiptPseudonymiser</code> before persistence or logging.',
+                            'Revenue outbox + event ledger — <code>revenue_outbox_events</code> queues downstream cue grants and analytics; <code>revenue_events</code> is the append-only ledger that survives reconciliation reruns. Trial-card-fingerprint anti-abuse rejects repeat free-trial attempts before they reach the store. GDPR consent payload captured per-purchase via <code>subscription_consent_log</code>.',
+                            'Privy web <code>/login</code> Origin header — <code>PrivyEmailOtpClient</code> now sends <code>Origin: &lt;web origin&gt;</code> (config: <code>privy.web_origin</code>, env: <code>PRIVY_WEB_ORIGIN</code>, falls back to <code>app.url</code>) so Privy\'s REST allowlist accepts server-to-server <code>/passwordless/{init,authenticate}</code> requests. Mobile JWT path is unaffected.',
+                            'Device-takeover guard contract fix — <code>DeviceTakeoverAttemptException</code> declared <code>getHttpStatusCode(): 409</code> since the v2.2.0 security hardening (#348) but had no <code>render()</code> method and no <code>HttpException</code> parent, so the guard fell through to Laravel\'s default handler and emitted a generic 500. <code>POST /api/v1/notifications/register-device</code> now returns <code>{ error: "DEVICE_REGISTERED_TO_DIFFERENT_USER" }</code> with HTTP 409 so mobile can distinguish a takeover-blocked registration from a transient outage.',
+                            'Rewards quest-completion lockdown — the public <code>POST /api/v1/rewards/quests/{id}/complete</code> endpoint and the GraphQL <code>completeQuest</code> mutation are removed. Both credited XP from <code>RewardsService::completeQuest</code> without checking the underlying domain action; any authenticated caller could one-shot ~290 XP + 590 points from the seeded quests. Completion is now reachable only via domain-event listeners. New <code>TriggerQuestOnProfileUpdated</code> listener closes the <code>complete-profile</code> quest gap; new <code>QuestCompleted</code> broadcast fires on <code>private-user.{userId}</code> after successful auto-completion so mobile can show the celebration modal in real time.',
+                        ],
+                    ],
+                    [
+                        'version' => 'v7.12.0',
+                        'date' => 'May 5, 2026',
+                        'label' => 'Non-Custodial Wallet Send (Privy Embedded Wallets)',
+                        'label_color' => 'teal',
+                        'badge_color' => 'bg-teal-100 text-teal-700 border-teal-200',
+                        'dot_color' => 'bg-teal-500',
+                        'items' => [
+                            'Privy passkey login — <code>POST /api/v1/auth/privy-login</code> exchanges a Privy JWT (verified via JWKS with <code>iss</code> / <code>aud</code> / <code>exp</code> checks) for a Sanctum token. Auto-creates the user on first login via <code>privy_user_id</code> lookup; cross-client account merging works for the same Privy DID across mobile and web.',
+                            'Non-custodial address registration — <code>POST /api/v1/wallet/addresses</code> registers Privy-derived addresses. EVM smart-account address mirrors across polygon / base / arbitrum / ethereum, plus one Solana ed25519 row in <code>blockchain_addresses</code> so existing webhook sync, balance lookups, and tx indexers continue unchanged.',
+                            'Two-step send flow — <code>POST /api/v1/wallet/transactions/prepare</code> returns an unsigned payload (Solana legacy tx message bytes; EVM ERC-4337 v0.6 UserOperation with Pimlico paymaster sponsorship), persists a <code>wallet_send_records</code> row in <code>pending</code> state, honors the <code>Idempotency-Key</code> HTTP header. <code>POST /api/v1/wallet/transactions/submit</code> accepts the device-signed payload and broadcasts via Helius (Solana) or Pimlico bundler (EVM). Wire contract is camelCase end-to-end (<code>quoteId</code>, <code>intentId</code>, <code>evm.ownerPasskeyCredentialId</code>) to match mobile RN/TS request types.',
+                            'Confirmation tracking — <code>HeliusTransactionProcessor</code> flips Solana records to <code>confirmed</code> from the existing webhook. <code>PollEvmWalletSendConfirmations</code> polls the Pimlico bundler for in-flight EVM UserOps every minute.',
+                            'Stripped surface (hard cutover, project not yet live) — the custodial signing endpoint <code>POST /api/v1/auth/sign-userop</code>, the custodial dispatch endpoint <code>POST /api/v1/wallet/transactions/send</code>, and all <code>/api/v1/wallet/recovery-shard-backup/*</code> Shamir endpoints are removed. Privy holds the keys; the device signs every transaction; the backend never sees private key material.',
+                            'Operator commands — <code>php artisan privy:verify-jwt &lt;token&gt;</code> verifies a Privy JWT against the live issuer and dumps claims; <code>php artisan wallet:inspect-user &lt;email&gt;</code> shows Privy linkage + addresses + recent send records read-only.',
+                        ],
+                    ],
                     [
                         'version' => 'v7.11.0',
                         'date' => 'April 30, 2026',
