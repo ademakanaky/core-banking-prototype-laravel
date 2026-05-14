@@ -68,9 +68,30 @@ return [
 
         'apple' => [
             'bundle_id' => (string) env('APPLE_BUNDLE_ID', 'app.zelta'),
-            // Apple App Store Server Notifications V2 are JWS-signed; the
-            // verification key is Apple's certificate chain, not an env secret.
-            // The verifier pins Apple Root CA G3 / WWDR G6 fingerprints.
+            // Apple App Store Server Notifications V2 + StoreKit 2 receipts
+            // are JWS-signed; the verification key is Apple's certificate
+            // chain, not an env secret. The verifier pins the root CA by
+            // SHA-256 fingerprint.
+            //
+            // `root_ca_path` is the bundled Apple Root CA G3 (.cer DER bytes);
+            // its fingerprint is auto-derived at verify time. `root_ca_fingerprints`
+            // is an additional pin list — useful when staging an upcoming root
+            // rollover. Both sources are merged.
+            //
+            // Apple Root CA G3 fingerprint (from `openssl x509 -fingerprint
+            // -sha256` on storage/app/apple/AppleRootCA-G3.cer):
+            //   63:34:3A:BF:B8:9A:6A:03:EB:B5:7E:9B:3F:5F:A7:BE:7C:4F:5C:75:6F:30:17:B3:A8:C4:88:C3:65:3E:91:79
+            'root_ca_path' => (string) env(
+                'APPLE_ROOT_CA_PATH',
+                storage_path('app/apple/AppleRootCA-G3.cer')
+            ),
+            'root_ca_fingerprints' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env(
+                    'APPLE_ROOT_CA_FINGERPRINTS',
+                    '63343ABFB89A6A03EBB57E9B3F5FA7BE7C4F5C756F3017B3A8C488C3653E9179',
+                )),
+            ), static fn (string $v): bool => $v !== '')),
             'product_ids' => [
                 'monthly_pro' => (string) env('APPLE_PRODUCT_MONTHLY_PRO', 'zelta_pro_monthly'),
                 'annual_pro'  => (string) env('APPLE_PRODUCT_ANNUAL_PRO', 'zelta_pro_annual'),
