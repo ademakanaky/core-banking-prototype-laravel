@@ -162,6 +162,23 @@ Non-custodial flow. Privy holds the keys (passkey-controlled smart accounts on E
 | Idempotency key on the wrong field | It's an HTTP header (`Idempotency-Key`), not a body field — matches `/pay`/`/pay/card` |
 | `quote_id` vs `quoteId` | Wire contract is camelCase across the board (matches mobile RN/TS request types) |
 
+## IAP / Subscriptions (v7.13.0+)
+
+Plan B mobile-driven subscriptions (Apple App Store + Google Play). Entry point: `POST /api/v1/subscriptions/iap/verify`. Domain: `app/Domain/Subscription/`. Persistence: `subscriptions`, `iap_subscriptions`, `processed_webhook_events`, `revenue_outbox_events`, `revenue_events`, `trial_card_fingerprints`, `subscription_consent_log`.
+
+- All IAP conflict states surface as **HTTP 409 `ERR_SUB_002`** with `conflict.kind` (`two_stores_active` / `different_zelta_user` / `family_sharing_unsupported` / `stale_receipt`) + `attemptedSource` + `existingSubscription{ source, currentPeriodEndsAt }`. Mobile branches on `kind`; do not introduce new `ERR_SUB_*` codes for IAP conflicts.
+- Apple JWS chain validation pins to Apple Root CA G3 at `storage/app/apple/AppleRootCA-G3.cer` (fingerprint `63343ABF…E9179`). `APPLE_JWS_VERIFICATION_BYPASS=true` is staging-only and rejected in production.
+- Webhook ingestion is idempotent via `processed_webhook_events (provider, event_id)` unique index — both Apple App Store Server Notifications V2 and Google Play RTDN flow through the same pseudonymisation + outbox path.
+- Receipts are HMAC-pseudonymised by `IapReceiptPseudonymiser` using `IAP_RECEIPT_PEPPER` before persistence or logging. **Never rotate the pepper** — it's one-way; rotation breaks recovery of all pre-rotation receipts.
+
+| Pitfall | Fix |
+|---|---|
+| Dropping `existingSubscription` for stale-receipt / family-sharing cases | Mobile hard-requires the field for every `ERR_SUB_002`. Use `existingSubscriptionFromVerified()` to derive it from the receipt's reported source + expiry when there's no on-file subscription |
+| New `ERR_SUB_*` code for an IAP conflict | Route through `ERR_SUB_002 { conflict: { kind } }` instead. Mobile's `subscriptionConflict.ts` returns null for any other code |
+| `IAP_RECEIPT_PEPPER` empty in prod | `IapReceiptPseudonymiser::pseudonymise()` hard-throws `RuntimeException` on first call. Generate via `openssl rand -hex 32`; set before first verify request |
+| Apple JWS verification bypass slips into prod | `APPLE_JWS_VERIFICATION_BYPASS=true` is the auth bypass for the entire Apple IAP surface. Guard at deployment time (env diff, smoke test that prod verifier rejects a known-bad JWS) |
+| Privy `/passwordless/*` returns 403 "Must specify origin" | `PrivyEmailOtpClient` sends `Origin: <web origin>` from `config('privy.web_origin')` (env: `PRIVY_WEB_ORIGIN`, falls back to `app.url`). Origin must also be on Privy dashboard → Allowed origins. Mobile JWT path is unaffected |
+
 ## Notes
 
 - Feature pages: only visible when `SHOW_PROMO_PAGES=true` (demo mode); production shows app landing page only

@@ -3257,6 +3257,54 @@ Findings #1-2 fixed in v7.1.1, findings #3-15 fixed in this release:
 
 ---
 
+## Version 7.13.0 — Plan B Subscriptions / In-App Purchases (May 2026)
+
+**Theme**: Mobile-driven IAP subscriptions (Apple App Store + Google Play) with a hardened revenue path — webhook-replay-safe ingestion, trial-card-fingerprint anti-abuse, GDPR consent log, and ERR_SUB_002 mobile-error contract.
+
+### Delivered Features
+- `POST /api/v1/subscriptions/iap/verify` — exchange an Apple StoreKit 2 JWS or Google Play subscription token for a Zelta subscription record. Persists `subscriptions` + `iap_subscriptions` rows, idempotent via `(provider, original_transaction_id)` unique index. Family-Sharing / stale-receipt / cross-account collisions surface as HTTP 409 with the mobile-aligned `ERR_SUB_002 { kind, attemptedSource, existingSubscription: { source, currentPeriodEndsAt } }` envelope.
+- Apple JWS verification — fail-closed stub at slice merge time, replaced with real Apple Root CA G3 cert-pinned chain validation + ES256 signature check in a follow-up (no new vendor deps; PHP `openssl_*` built-ins only). Staging-only bypass: `APPLE_JWS_VERIFICATION_BYPASS=true` (rejected in production).
+- Google Play Real-Time Developer Notifications (RTDN) — Cloud Pub/Sub push subscription delivers subscription state transitions; `ProcessedWebhookEvent` table backs idempotent ingestion (`provider`, `event_id` unique).
+- Apple App Store Server Notifications V2 — same idempotent ingestion path; subscriptions reconciled against the latest signed payload.
+- Revenue outbox + event ledger — `revenue_outbox_events` queues downstream side-effects (cue grants, analytics), `revenue_events` is the append-only ledger that survives reconciliation reruns.
+- Trial-card-fingerprint anti-abuse — `trial_card_fingerprints` records the (provider, hashed-PAN-or-equivalent) tuple on first paid intent; subsequent free-trial attempts from the same fingerprint are rejected before they reach the store.
+- GDPR consent log — `subscription_consent_log` captures the user's affirmative consent for recurring billing + the consent-version string at purchase time. Mobile passes the consent payload through the verify endpoint.
+- IAP receipt pseudonymisation — `IapReceiptPseudonymiser` HMACs raw receipts with `IAP_RECEIPT_PEPPER` before logging or persisting. Pepper is one-way; rotation is a manual operator runbook.
+- Web `/login` Privy email-OTP `Origin` header — `PrivyEmailOtpClient` now sends `Origin: <web origin>` (config: `privy.web_origin`, env: `PRIVY_WEB_ORIGIN`, falls back to `app.url`) so Privy's REST allowlist accepts server-to-server `/passwordless/{init,authenticate}` requests. Mobile JWT path is unaffected.
+
+### Mobile Error Contract (ERR_SUB_002)
+Plan B v1.3.0 settled on a single ERR_SUB_002 envelope for all IAP conflict states; mobile branches on `conflict.kind`:
+
+```jsonc
+HTTP 409 {
+  "error": {
+    "code": "ERR_SUB_002",
+    "conflict": {
+      "kind": "two_stores_active" | "different_zelta_user" | "family_sharing_unsupported" | "stale_receipt",
+      "attemptedSource": "apple" | "google",
+      "existingSubscription": { "source": "apple" | "google", "currentPeriodEndsAt": "<ISO 8601>" }
+    }
+  }
+}
+```
+
+`existingSubscription` is always populated — for stale-receipt / family-sharing cases the receipt-reported source + expiry are used. The earlier `ERR_SUB_008` / `ERR_SUB_009` codes were dropped (mobile never branched on them).
+
+### Required Configuration
+- `IAP_RECEIPT_PEPPER` — 64-hex-char HMAC pepper. Generate with `openssl rand -hex 32`. **Never rotate** without the manual runbook — pre-rotation receipts become unrecoverable.
+- `GITLEAKS_LICENSE` — gitleaks-action v2+ org license, required on every PR's Security Scan workflow. Set under **both** Actions secrets and Dependabot secrets scopes.
+- `APPLE_PRODUCT_MONTHLY_PRO` / `APPLE_PRODUCT_ANNUAL_PRO` — App Store Connect product identifiers. Block on Apple Developer enrollment.
+- `GOOGLE_PLAY_SERVICE_ACCOUNT_PATH` or `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` — Play Console service account JSON for entitlement verification.
+- Pub/Sub topic `projects/<project-id>/topics/zelta-play-rtdn` + Financial-data role grant in Play Console.
+- `PRIVY_WEB_ORIGIN=https://<web-host>` — only needed when web `/login` lives on a different host than `APP_URL`. The host must also be added to Privy dashboard → Settings → Allowed origins.
+
+### Operator Runbook
+- Pre-flight: confirm `IAP_RECEIPT_PEPPER` is set in production env (hard-throws on first verify otherwise), `GITLEAKS_LICENSE` is in both secret scopes, Pub/Sub topic + Financial-data role are granted, Privy dashboard allowlist contains the production web origin.
+- Post-deploy smoke test for Privy web `/login`: `sudo -u www-data php artisan tinker --execute="app(App\Domain\Auth\Services\PrivyEmailOtpClient::class)->sendCode('you+test@example.com');"` — expect no exception.
+- Apple IAP gate: Apple Developer enrollment + ASC product config must complete before Apple verify path is exercised. Until then, the JWS verifier fails closed (rejects all Apple receipts).
+
+---
+
 ## Version 7.12.0 — Non-Custodial Wallet Send (May 2026)
 
 **Theme**: Replace server-side signing with Privy embedded wallets — passkey-controlled smart accounts on EVM, device-bound ed25519 on Solana, device signs every transaction.
@@ -3301,5 +3349,5 @@ Embeddable JS widget that renders Zelta's 402 payment flow inside the partner's 
 
 ---
 
-*Document Version: 7.12.0*
-*Updated: May 5, 2026 (v7.12.0 non-custodial wallet send — Privy embedded wallets)*
+*Document Version: 7.13.0*
+*Updated: May 14, 2026 (v7.13.0 Plan B IAP subscriptions + ERR_SUB_002 mobile contract + Privy web `/login` Origin fix)*
