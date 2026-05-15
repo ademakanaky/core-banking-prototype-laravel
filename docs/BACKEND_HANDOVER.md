@@ -515,7 +515,7 @@ All errors should follow this format:
 ### Network constraints:
 - v1 supports **Solana + Tron only**. The `preferredNetwork` field in payment intents should only accept `SOLANA` and `TRON`.
 - The network status endpoint should return only these two networks (plus others marked as `coming_soon` if desired).
-- Asset constraint: **USDC only** for v1. The `asset` field should only accept `USDC`.
+- Asset constraint (as of v7.13.1): the `asset` field accepts `USDC` and `USDT`. Both are 6-decimal stablecoins. Asset support is enum-driven via `App\Domain\MobilePayment\Enums\PaymentAsset` — future additions auto-extend the validators.
 
 ---
 

@@ -161,6 +161,7 @@ Non-custodial flow. Privy holds the keys (passkey-controlled smart accounts on E
 | Float-money amounts | Preparers validate `amount` against numeric-string + bcmath; never `(float)` for money |
 | Idempotency key on the wrong field | It's an HTTP header (`Idempotency-Key`), not a body field — matches `/pay`/`/pay/card` |
 | `quote_id` vs `quoteId` | Wire contract is camelCase across the board (matches mobile RN/TS request types) |
+| Adding a new send/receive asset | Add the case to `App\Domain\MobilePayment\Enums\PaymentAsset` (decimals + label) AND make sure `EvmTokens` / `SolanaTokens` have the contract / mint. The receive QR builder uses `SolanaTokens::mintFor()` per Solana Pay spec — `spl-token` must be the mint, not the symbol. v7.13.1 added USDT this way |
 
 ## IAP / Subscriptions (v7.13.0+)
 
