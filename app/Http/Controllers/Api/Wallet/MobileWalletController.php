@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Wallet;
 
 use App\Domain\Account\Models\BlockchainAddress;
 use App\Domain\MobilePayment\Enums\PaymentIntentStatus;
+use App\Domain\MobilePayment\Enums\PaymentNetwork;
 use App\Domain\MobilePayment\Models\PaymentIntent;
 use App\Domain\MobilePayment\Services\ActivityFeedService;
 use App\Domain\MobilePayment\Services\TransactionDetailService;
@@ -33,6 +34,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use InvalidArgumentException;
 use OpenApi\Attributes as OA;
 use Throwable;
@@ -603,7 +605,7 @@ class MobileWalletController extends Controller
         new OA\Property(property: 'to', type: 'string', example: '0x1234...abcd or base58 Solana pubkey'),
         new OA\Property(property: 'token', type: 'string', enum: ['USDC', 'USDT'], example: 'USDC'),
         new OA\Property(property: 'amount', type: 'string', example: '1.50', description: 'Decimal major units. Send "1" or "1.5"; not "1000000".'),
-        new OA\Property(property: 'network', type: 'string', example: 'polygon', description: 'solana | polygon | base | arbitrum | ethereum'),
+        new OA\Property(property: 'network', type: 'string', example: 'SOLANA', description: 'SOLANA | TRON | polygon | base | arbitrum | ethereum (case-sensitive — must match the exact PaymentNetwork enum value, same as the value returned in quote response)'),
         new OA\Property(property: 'quoteId', type: 'string', example: 'q_abc123'),
         ]))
     )]
@@ -617,7 +619,7 @@ class MobileWalletController extends Controller
             'to'      => ['required', 'string', 'min:26', 'max:128'],
             'token'   => ['required', 'string', 'in:USDC,USDT'],
             'amount'  => ['required', 'string'],
-            'network' => ['required', 'string', 'in:solana,polygon,base,arbitrum,ethereum'],
+            'network' => ['required', 'string', Rule::enum(PaymentNetwork::class)],
             'quoteId' => ['required', 'string', 'max:64'],
         ]);
 
