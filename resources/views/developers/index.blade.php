@@ -137,7 +137,7 @@
                 <div class="text-center">
                     <div class="inline-flex items-center px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm mb-6">
                         <span class="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
-                        <span>v7.13.1 Documentation — 61 Domains, 1,400+ Routes, GraphQL + REST + MCP + x402</span>
+                        <span>v7.13.2 Documentation — 61 Domains, 1,400+ Routes, GraphQL + REST + MCP + x402</span>
                     </div>
                     <h1 class="text-5xl md:text-7xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-white to-blue-200">
                         Build with 1,400+ API Routes
@@ -177,8 +177,8 @@
                     <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    <span class="font-medium">v7.13.1 Released:</span>
-                    <span class="ml-2">Mobile-driven IAP subscriptions (Apple StoreKit 2 + Google Play RTDN) with the <code class="code-font">ERR_SUB_002</code> mobile error contract and Apple Root CA G3 pinned JWS verification. Non-custodial wallet send via Privy passkey-controlled smart accounts (v7.12.0) is live. 61 DDD domains, 1,400+ API routes, GraphQL (45 domains), ISO 20022, ISO 8583, x402 Protocol, public MCP server.</span>
+                    <span class="font-medium">v7.13.2 Released:</span>
+                    <span class="ml-2">Mobile wallet bug-fix patch — Solana send unblocked (<code class="code-font">PaymentNetwork</code> enum casing aligned across quote and prepare), receipts work for Solana inbound and any non-intent activity (routed through <code class="code-font">ActivityFeedItem</code>), and privacy merkle-root returns <code class="code-font">503 ERR_PRIVACY_310</code> instead of an uncaught 500. USDT (v7.13.1), mobile-driven IAP subscriptions (v7.13.0), and non-custodial wallet send via Privy (v7.12.0) all live. 61 DDD domains, 1,400+ API routes, GraphQL (45 domains), ISO 20022, ISO 8583, x402 Protocol, public MCP server.</span>
                 </div>
             </div>
         </section>
