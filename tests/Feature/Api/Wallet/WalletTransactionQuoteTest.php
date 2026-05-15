@@ -85,4 +85,39 @@ class WalletTransactionQuoteTest extends TestCase
         $response->assertStatus(400)
             ->assertJsonPath('success', false);
     }
+
+    public function test_transaction_quote_accepts_usdt_on_solana(): void
+    {
+        $response = $this->withToken($this->token)
+            ->postJson('/api/v1/wallet/transactions/quote', [
+                'to'      => 'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+                'network' => 'SOLANA',
+                'asset'   => 'USDT',
+                'amount'  => 1,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.asset', 'USDT')
+            ->assertJsonPath('data.network', 'SOLANA');
+    }
+
+    public function test_transaction_quote_accepts_usdt_on_polygon(): void
+    {
+        // Note: PaymentNetwork uses lowercase enum values for EVM chains
+        // (`polygon`, `base`, `arbitrum`, `ethereum`) while non-EVM chains use
+        // upper-case (`SOLANA`, `TRON`). Inconsistent but pre-existing; mobile
+        // must send the exact enum value.
+        $response = $this->withToken($this->token)
+            ->postJson('/api/v1/wallet/transactions/quote', [
+                'to'      => '0x742d35cc6634c0532925a3b844bc454e4438f44e',
+                'network' => 'polygon',
+                'asset'   => 'USDT',
+                'amount'  => 5,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.asset', 'USDT')
+            ->assertJsonPath('data.network', 'polygon');
+    }
 }

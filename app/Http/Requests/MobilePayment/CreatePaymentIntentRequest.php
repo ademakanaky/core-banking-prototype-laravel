@@ -37,8 +37,8 @@ class CreatePaymentIntentRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'asset.in'            => 'Only USDC is supported for v1.',
-            'preferredNetwork.in' => 'Only SOLANA and TRON networks are supported for v1.',
+            'asset.in'            => 'Supported assets: ' . implode(', ', PaymentAsset::values()) . '.',
+            'preferredNetwork.in' => 'Supported networks: ' . implode(', ', PaymentNetwork::values()) . '.',
             'amount.gt'           => 'Payment amount must be greater than zero.',
         ];
     }

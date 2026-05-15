@@ -32,7 +32,7 @@ class WalletReceiveController extends Controller
         tags: ['Mobile Payments'],
         security: [['sanctum' => []]],
         parameters: [
-        new OA\Parameter(name: 'asset', in: 'query', required: true, description: 'Payment asset (currently only USDC supported)', schema: new OA\Schema(type: 'string', enum: ['USDC'], example: 'USDC')),
+        new OA\Parameter(name: 'asset', in: 'query', required: true, description: 'Payment asset (USDC or USDT)', schema: new OA\Schema(type: 'string', enum: ['USDC', 'USDT'], example: 'USDC')),
         new OA\Parameter(name: 'network', in: 'query', required: true, description: 'Payment network', schema: new OA\Schema(type: 'string', enum: ['SOLANA', 'TRON'], example: 'SOLANA')),
         ]
     )]
@@ -74,7 +74,7 @@ class WalletReceiveController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $request->validate([
-            'asset'   => ['required', 'string', 'in:USDC'],
+            'asset'   => ['required', 'string', 'in:' . implode(',', PaymentAsset::values())],
             'network' => ['required', 'string', 'in:SOLANA,TRON'],
         ]);
 

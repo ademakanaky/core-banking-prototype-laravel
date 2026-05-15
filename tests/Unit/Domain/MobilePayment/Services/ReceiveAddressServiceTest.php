@@ -32,7 +32,7 @@ describe('ReceiveAddressService', function (): void {
 });
 
 describe('ReceiveAddressService QR Value', function (): void {
-    it('builds Solana QR value via reflection', function (): void {
+    it('builds Solana USDC QR value with the USDC mint per Solana Pay spec', function (): void {
         $service = new ReceiveAddressService();
         $reflection = new ReflectionClass($service);
         $method = $reflection->getMethod('buildQrValue');
@@ -40,7 +40,18 @@ describe('ReceiveAddressService QR Value', function (): void {
 
         $qr = $method->invoke($service, 'testAddr123', PaymentNetwork::SOLANA, PaymentAsset::USDC);
 
-        expect($qr)->toBe('solana:testAddr123?spl-token=USDC');
+        expect($qr)->toBe('solana:testAddr123?spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+    });
+
+    it('builds Solana USDT QR value with the USDT mint per Solana Pay spec', function (): void {
+        $service = new ReceiveAddressService();
+        $reflection = new ReflectionClass($service);
+        $method = $reflection->getMethod('buildQrValue');
+        $method->setAccessible(true);
+
+        $qr = $method->invoke($service, 'testAddr123', PaymentNetwork::SOLANA, PaymentAsset::USDT);
+
+        expect($qr)->toBe('solana:testAddr123?spl-token=Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB');
     });
 
     it('builds Tron QR value as plain address', function (): void {

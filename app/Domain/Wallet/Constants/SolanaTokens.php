@@ -16,4 +16,20 @@ final class SolanaTokens
     {
         return self::KNOWN_MINTS[$mint]['symbol'] ?? 'SPL';
     }
+
+    /**
+     * Resolve a symbol (USDC, USDT, …) to its canonical Solana mint address.
+     * Falls back to the input string when the symbol isn't a known SPL token
+     * so the caller's QR/URL doesn't end up empty.
+     */
+    public static function mintFor(string $symbol): string
+    {
+        foreach (self::KNOWN_MINTS as $mint => $meta) {
+            if ($meta['symbol'] === $symbol) {
+                return $mint;
+            }
+        }
+
+        return $symbol;
+    }
 }
