@@ -6,6 +6,7 @@ namespace App\Domain\MobilePayment\Services;
 
 use App\Domain\MobilePayment\Enums\PaymentAsset;
 use App\Domain\MobilePayment\Enums\PaymentNetwork;
+use App\Domain\Wallet\Constants\SolanaTokens;
 use App\Domain\Wallet\Factories\BlockchainConnectorFactory;
 use App\Domain\Wallet\Helpers\SolanaAddressHelper;
 
@@ -76,11 +77,16 @@ class ReceiveAddressService
 
     /**
      * Build a QR-encodable value for the address.
+     *
+     * Solana Pay (https://docs.solanapay.com/spec) requires `spl-token` to be
+     * the mint address, not the symbol. We resolve the asset → mint via
+     * {@see SolanaTokens::mintFor()} so USDC and USDT scan correctly in
+     * spec-compliant wallets.
      */
     private function buildQrValue(string $address, PaymentNetwork $network, PaymentAsset $asset): string
     {
         return match ($network) {
-            PaymentNetwork::SOLANA                                                                            => "solana:{$address}?spl-token=USDC",
+            PaymentNetwork::SOLANA                                                                            => "solana:{$address}?spl-token=" . SolanaTokens::mintFor($asset->value),
             PaymentNetwork::TRON                                                                              => $address,
             PaymentNetwork::POLYGON, PaymentNetwork::BASE, PaymentNetwork::ARBITRUM, PaymentNetwork::ETHEREUM => "ethereum:{$address}",
         };

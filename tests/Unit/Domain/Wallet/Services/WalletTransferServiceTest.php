@@ -168,8 +168,17 @@ describe('WalletTransferService', function (): void {
         });
 
         it('throws for invalid asset', function (): void {
-            expect(fn () => $this->service->getTransferQuote('SOLANA', 'USDT', '100.00'))
+            // 'BTC' was 'USDT' before USDT was added to PaymentAsset. Pick a
+            // symbol that genuinely isn't in the enum so the cast throws.
+            expect(fn () => $this->service->getTransferQuote('SOLANA', 'BTC', '100.00'))
                 ->toThrow(ValueError::class);
+        });
+
+        it('accepts USDT on Solana now that the enum supports it', function (): void {
+            $result = $this->service->getTransferQuote('SOLANA', 'USDT', '50.00');
+
+            expect($result['network'])->toBe('SOLANA');
+            expect($result['asset'])->toBe('USDT');
         });
     });
 });
