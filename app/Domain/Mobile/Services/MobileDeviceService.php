@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Domain\Mobile\Services;
 
 use App\Domain\Mobile\Exceptions\DeviceTakeoverAttemptException;
+use App\Domain\Mobile\Models\DeviceReassignmentLog;
 use App\Domain\Mobile\Models\MobileDevice;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 
 /**
  * Service for managing mobile device registration and lifecycle.
@@ -35,13 +38,28 @@ class MobileDeviceService
         ?string $osVersion = null,
         ?array $metadata = null
     ): MobileDevice {
-        // Check if device already exists
         $existingDevice = MobileDevice::where('device_id', $deviceId)->first();
 
-        if ($existingDevice) {
-            // SECURITY FIX: Reject device takeover attempts - never allow changing user_id
-            // This prevents attackers from taking over legitimate user devices
-            if ($existingDevice->user_id !== $user->id) {
+        if ($existingDevice !== null && $existingDevice->user_id === $user->id) {
+            // Device exists for the same user - update it
+            return $this->updateDevice($existingDevice, [
+                'platform'       => $platform,
+                'push_token'     => $pushToken,
+                'device_name'    => $deviceName,
+                'device_model'   => $deviceModel,
+                'os_version'     => $osVersion,
+                'app_version'    => $appVersion,
+                'metadata'       => $metadata,
+                'last_active_at' => now(),
+            ]);
+        }
+
+        if ($existingDevice !== null) {
+            // The device_id is registered to a DIFFERENT user.
+            if ($this->hasBoundCredentials($existingDevice)) {
+                // The device holds biometric/passkey material bound to the
+                // previous owner — this is the genuine takeover threat the
+                // guard was added for (#348). Reject it.
                 Log::critical('Device takeover attempt blocked', [
                     'device_id'         => $deviceId,
                     'existing_user_id'  => $existingDevice->user_id,
@@ -57,27 +75,125 @@ class MobileDeviceService
                 );
             }
 
-            // Device exists for same user - update it
-            return $this->updateDevice($existingDevice, [
-                'platform'       => $platform,
-                'push_token'     => $pushToken,
-                'device_name'    => $deviceName,
-                'device_model'   => $deviceModel,
-                'os_version'     => $osVersion,
-                'app_version'    => $appVersion,
-                'metadata'       => $metadata,
-                'last_active_at' => now(),
-            ]);
+            // Push-only device: no biometric/passkey credentials bound. There
+            // is no security material to take over — the previous owner only
+            // loses an FCM/APNS routing key, which is inert without our
+            // app-server credentials. Reassign it so re-Privy / reinstall /
+            // shared-tablet flows don't permanently lock out the new owner.
+            return DB::transaction(function () use (
+                $existingDevice,
+                $user,
+                $deviceId,
+                $platform,
+                $appVersion,
+                $pushToken,
+                $deviceName,
+                $deviceModel,
+                $osVersion,
+                $metadata
+            ): MobileDevice {
+                $this->logReassignment(
+                    $existingDevice,
+                    $user,
+                    DeviceReassignmentLog::REASON_AUTO_PUSH_ONLY,
+                    hadBoundCredentials: false,
+                    operatorId: null,
+                );
+                $existingDevice->delete();
+
+                return $this->createDevice(
+                    $user,
+                    $deviceId,
+                    $platform,
+                    $appVersion,
+                    $pushToken,
+                    $deviceName,
+                    $deviceModel,
+                    $osVersion,
+                    $metadata,
+                );
+            });
         }
 
-        // Check device limit
+        return $this->createDevice(
+            $user,
+            $deviceId,
+            $platform,
+            $appVersion,
+            $pushToken,
+            $deviceName,
+            $deviceModel,
+            $osVersion,
+            $metadata,
+        );
+    }
+
+    /**
+     * Force-reassign a device to a new user, even when it has bound credentials.
+     *
+     * Operator-only recovery path for cases the automatic guard still blocks
+     * (a credential-bound device that legitimately changed hands). The fresh
+     * row starts with NO push token and NO biometric/passkey bindings — the
+     * previous owner's credentials must not carry over.
+     */
+    public function forceReassignDevice(string $deviceId, User $newUser, User $operator): MobileDevice
+    {
+        $existingDevice = MobileDevice::where('device_id', $deviceId)->first();
+
+        if ($existingDevice === null) {
+            throw new InvalidArgumentException("No device registered with device_id {$deviceId}.");
+        }
+
+        if ($existingDevice->user_id === $newUser->id) {
+            throw new InvalidArgumentException("Device {$deviceId} is already registered to user {$newUser->id}.");
+        }
+
+        return DB::transaction(function () use ($existingDevice, $newUser, $operator, $deviceId): MobileDevice {
+            $this->logReassignment(
+                $existingDevice,
+                $newUser,
+                DeviceReassignmentLog::REASON_OPERATOR_FORCED,
+                hadBoundCredentials: $this->hasBoundCredentials($existingDevice),
+                operatorId: (int) $operator->id,
+            );
+
+            $platform = $existingDevice->platform;
+            $appVersion = $existingDevice->app_version;
+            $existingDevice->delete();
+
+            return $this->createDevice($newUser, $deviceId, $platform, $appVersion);
+        });
+    }
+
+    /**
+     * Whether a device holds biometric or passkey credentials bound to its owner.
+     */
+    private function hasBoundCredentials(MobileDevice $device): bool
+    {
+        return $device->biometric_enabled || $device->passkey_enabled;
+    }
+
+    /**
+     * Persist a fresh device row for a user, enforcing the per-user device cap.
+     *
+     * @param array<string, mixed>|null $metadata
+     */
+    private function createDevice(
+        User $user,
+        string $deviceId,
+        string $platform,
+        string $appVersion,
+        ?string $pushToken = null,
+        ?string $deviceName = null,
+        ?string $deviceModel = null,
+        ?string $osVersion = null,
+        ?array $metadata = null
+    ): MobileDevice {
         $deviceCount = MobileDevice::where('user_id', $user->id)->count();
         if ($deviceCount >= self::MAX_DEVICES_PER_USER) {
-            // Remove the oldest inactive device
             $this->removeOldestInactiveDevice($user);
         }
 
-        // Create new device
         $device = MobileDevice::create([
             'user_id'        => $user->id,
             'device_id'      => $deviceId,
@@ -98,6 +214,37 @@ class MobileDeviceService
         ]);
 
         return $device;
+    }
+
+    /**
+     * Write the audit trail for a device ownership flip.
+     */
+    private function logReassignment(
+        MobileDevice $existingDevice,
+        User $newUser,
+        string $reason,
+        bool $hadBoundCredentials,
+        ?int $operatorId
+    ): void {
+        DeviceReassignmentLog::create([
+            'device_id'             => $existingDevice->device_id,
+            'previous_user_id'      => $existingDevice->user_id,
+            'new_user_id'           => $newUser->id,
+            'had_bound_credentials' => $hadBoundCredentials,
+            'reason'                => $reason,
+            'operator_id'           => $operatorId,
+            'ip_address'            => request()->ip(),
+            'user_agent'            => request()->userAgent(),
+        ]);
+
+        Log::warning('Mobile device reassigned to new user', [
+            'device_id'             => $existingDevice->device_id,
+            'previous_user_id'      => $existingDevice->user_id,
+            'new_user_id'           => $newUser->id,
+            'reason'                => $reason,
+            'had_bound_credentials' => $hadBoundCredentials,
+            'operator_id'           => $operatorId,
+        ]);
     }
 
     /**

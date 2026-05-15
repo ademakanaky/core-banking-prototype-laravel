@@ -7,10 +7,12 @@ namespace Tests\Unit\Domain\Mobile\Services;
 use App\Domain\Mobile\Exceptions\BiometricBlockedException;
 use App\Domain\Mobile\Exceptions\DeviceTakeoverAttemptException;
 use App\Domain\Mobile\Models\BiometricFailure;
+use App\Domain\Mobile\Models\DeviceReassignmentLog;
 use App\Domain\Mobile\Models\MobileDevice;
 use App\Domain\Mobile\Services\BiometricAuthenticationService;
 use App\Domain\Mobile\Services\MobileDeviceService;
 use App\Models\User;
+use InvalidArgumentException;
 use Tests\TestCase;
 
 /**
@@ -45,13 +47,15 @@ class MobileSecurityTest extends TestCase
 
     public function test_device_takeover_attempt_throws_exception(): void
     {
-        // User registers a device
+        // User registers a device and binds biometric credentials to it —
+        // the guard only blocks reassignment of credential-bound devices.
         $device = $this->deviceService->registerDevice(
             $this->user,
             'shared-device-id',
             'android',
             '1.0.0'
         );
+        $device->update(['biometric_enabled' => true]);
 
         // Attacker tries to register the same device
         $this->expectException(DeviceTakeoverAttemptException::class);
@@ -73,6 +77,7 @@ class MobileSecurityTest extends TestCase
             'android',
             '1.0.0'
         );
+        $device->update(['passkey_enabled' => true]);
 
         try {
             $this->deviceService->registerDevice(
@@ -126,6 +131,7 @@ class MobileSecurityTest extends TestCase
             '1.0.0',
             'original-token'
         );
+        $device->update(['biometric_enabled' => true]);
 
         try {
             $this->deviceService->registerDevice(
@@ -146,6 +152,89 @@ class MobileSecurityTest extends TestCase
         $this->assertEquals('android', $device->platform);
         $this->assertEquals('1.0.0', $device->app_version);
         $this->assertEquals('original-token', $device->push_token);
+    }
+
+    public function test_push_only_device_is_reassigned_to_new_user(): void
+    {
+        // A push-only device — no biometric/passkey credentials bound.
+        $original = $this->deviceService->registerDevice(
+            $this->user,
+            'push-only-device',
+            'android',
+            '1.0.0',
+            'old-fcm-token'
+        );
+
+        // A different user registers the same physical device (e.g. re-Privy).
+        $reassigned = $this->deviceService->registerDevice(
+            $this->attacker,
+            'push-only-device',
+            'android',
+            '2.0.0',
+            'new-fcm-token'
+        );
+
+        // The device row now belongs to the new user, and the old row is gone.
+        $this->assertEquals($this->attacker->id, $reassigned->user_id);
+        $this->assertEquals('new-fcm-token', $reassigned->push_token);
+        $this->assertDatabaseMissing('mobile_devices', ['id' => $original->id]);
+        $this->assertEquals(
+            1,
+            MobileDevice::where('device_id', 'push-only-device')->count()
+        );
+
+        // An audit row records the ownership flip.
+        $this->assertDatabaseHas('device_reassignment_log', [
+            'device_id'             => 'push-only-device',
+            'previous_user_id'      => $this->user->id,
+            'new_user_id'           => $this->attacker->id,
+            'reason'                => DeviceReassignmentLog::REASON_AUTO_PUSH_ONLY,
+            'had_bound_credentials' => false,
+        ]);
+    }
+
+    public function test_force_reassign_device_moves_credential_bound_device(): void
+    {
+        $operator = User::factory()->create();
+
+        $original = $this->deviceService->registerDevice(
+            $this->user,
+            'credential-bound-device',
+            'ios',
+            '1.0.0'
+        );
+        $original->update(['biometric_enabled' => true, 'passkey_enabled' => true]);
+
+        $reassigned = $this->deviceService->forceReassignDevice(
+            'credential-bound-device',
+            $this->attacker,
+            $operator
+        );
+
+        // Fresh row for the new owner — no carried-over credentials or token.
+        $this->assertEquals($this->attacker->id, $reassigned->user_id);
+        $this->assertEmpty($reassigned->biometric_enabled);
+        $this->assertEmpty($reassigned->passkey_enabled);
+        $this->assertNull($reassigned->push_token);
+        $this->assertDatabaseMissing('mobile_devices', ['id' => $original->id]);
+
+        $this->assertDatabaseHas('device_reassignment_log', [
+            'device_id'             => 'credential-bound-device',
+            'previous_user_id'      => $this->user->id,
+            'new_user_id'           => $this->attacker->id,
+            'operator_id'           => $operator->id,
+            'reason'                => DeviceReassignmentLog::REASON_OPERATOR_FORCED,
+            'had_bound_credentials' => true,
+        ]);
+    }
+
+    public function test_force_reassign_device_rejects_unknown_device(): void
+    {
+        $operator = User::factory()->create();
+
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->deviceService->forceReassignDevice('no-such-device', $this->attacker, $operator);
     }
 
     // ==========================================================
