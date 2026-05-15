@@ -6,11 +6,10 @@ namespace Tests\Feature\Api\Privacy;
 
 use App\Domain\Privacy\Contracts\MerkleTreeServiceInterface;
 use App\Domain\Privacy\Services\DemoMerkleTreeService;
-use App\Domain\Privacy\ValueObjects\MerklePath;
-use App\Domain\Privacy\ValueObjects\MerkleRoot;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\Sanctum;
+use Mockery;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -55,10 +54,7 @@ class MerkleRootEndpointTest extends TestCase
 
     public function test_it_returns_503_err_privacy_310_when_the_production_provider_throws(): void
     {
-        $this->app->bind(
-            MerkleTreeServiceInterface::class,
-            fn () => new ThrowingMerkleTreeService(),
-        );
+        $this->bindThrowingMerkleService();
 
         Sanctum::actingAs($this->user, ['read', 'write', 'delete']);
 
@@ -82,10 +78,7 @@ class MerkleRootEndpointTest extends TestCase
 
     public function test_it_accepts_chain_id_as_well_as_network_and_gives_the_same_503_when_the_provider_is_disabled(): void
     {
-        $this->app->bind(
-            MerkleTreeServiceInterface::class,
-            fn () => new ThrowingMerkleTreeService(),
-        );
+        $this->bindThrowingMerkleService();
 
         Sanctum::actingAs($this->user, ['read', 'write', 'delete']);
 
@@ -112,56 +105,20 @@ class MerkleRootEndpointTest extends TestCase
         $response->assertStatus(400)
             ->assertJsonPath('error.code', 'ERR_PRIVACY_306');
     }
-}
-
-/**
- * Test double that mimics the production binding by throwing the same
- * RuntimeException the real MerkleTreeService raises when not configured.
- */
-final class ThrowingMerkleTreeService implements MerkleTreeServiceInterface
-{
-    public function getMerkleRoot(string $network): MerkleRoot
-    {
-        throw new RuntimeException(
-            'Production Merkle tree sync not implemented. Use DemoMerkleTreeService for development.'
-        );
-    }
-
-    public function getMerklePath(string $commitment, string $network): MerklePath
-    {
-        throw new RuntimeException('Production Merkle path fetch not implemented.');
-    }
-
-    public function verifyCommitment(string $commitment, MerklePath $path): bool
-    {
-        return false;
-    }
-
-    public function supportsNetwork(string $network): bool
-    {
-        return in_array($network, $this->getSupportedNetworks(), true);
-    }
 
     /**
-     * @return array<string>
+     * Binds a Mockery double for MerkleTreeServiceInterface that throws the
+     * same RuntimeException the real production binding raises when the
+     * provider isn't configured for this deployment.
      */
-    public function getSupportedNetworks(): array
+    private function bindThrowingMerkleService(): void
     {
-        return ['polygon', 'base', 'arbitrum'];
-    }
+        $mock = Mockery::mock(MerkleTreeServiceInterface::class);
+        $mock->shouldReceive('getMerkleRoot')
+            ->andThrow(new RuntimeException(
+                'Production Merkle tree sync not implemented. Use DemoMerkleTreeService for development.'
+            ));
 
-    public function syncTree(string $network): MerkleRoot
-    {
-        throw new RuntimeException('Production Merkle tree sync not implemented.');
-    }
-
-    public function getTreeDepth(): int
-    {
-        return 32;
-    }
-
-    public function getProviderName(): string
-    {
-        return 'production';
+        $this->app->instance(MerkleTreeServiceInterface::class, $mock);
     }
 }
