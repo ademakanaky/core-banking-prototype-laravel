@@ -44,6 +44,19 @@
             @php
                 $releases = [
                     [
+                        'version' => 'v7.13.1',
+                        'date' => 'May 15, 2026',
+                        'label' => 'USDT Enablement + Solana Pay QR Spec Fix',
+                        'label_color' => 'slate',
+                        'badge_color' => 'bg-slate-100 text-slate-700 border-slate-200',
+                        'dot_color' => 'bg-slate-500',
+                        'items' => [
+                            'USDT added to the mobile-wallet send and receive surfaces. The <code>PaymentAsset</code> enum gains a USDT case (decimals=6, label "Tether USD"); <code>POST /api/v1/wallet/transactions/quote</code> and <code>GET /api/v1/wallet/receive</code> now accept <code>asset=USDT</code> alongside USDC. The EVM and Solana token registries (<code>EvmTokens</code>, <code>SolanaTokens::KNOWN_MINTS</code>) already had USDT contract addresses and mint wired in since the non-custodial Wallet Send work — only the enum-backed validators were gating it. The hard-coded <code>"in:USDC"</code> validator + "currently only USDC supported" OpenAPI annotation on <code>WalletReceiveController</code> are removed; both validators now reference <code>PaymentAsset::values()</code> so future asset additions auto-track.',
+                            'Solana Pay QR spec compliance. <code>ReceiveAddressService::buildQrValue</code> previously emitted <code>solana:{address}?spl-token=USDC</code> — the <code>spl-token</code> parameter per <a href="https://docs.solanapay.com/spec" target="_blank" rel="noopener" class="underline">solanapay.com/spec</a> must be the SPL mint address, not the symbol. Now resolves <code>USDC</code> → <code>EPjF…Dt1v</code> and <code>USDT</code> → <code>Es9v…NYB</code> via a new <code>SolanaTokens::mintFor()</code> helper. Strict Solana Pay wallets (Phantom, Solflare) will now scan USDC and USDT QRs correctly.',
+                            'Operational follow-up for full USDT enablement on EVM: Pimlico\'s sponsorship policy needs the USDT contract addresses added on polygon, arbitrum, and ethereum mainnets (Polygon <code>0xc213…58e8f</code>, Arbitrum <code>0xfd08…fcbb9</code>, Ethereum <code>0xdac1…31ec7</code>). Without this, <code>pm_sponsorUserOperation</code> will decline to sponsor USDT transfers on EVM. Tracked outside the repo.',
+                        ],
+                    ],
+                    [
                         'version' => 'v7.13.0',
                         'date' => 'May 15, 2026',
                         'label' => 'Mobile-Driven IAP Subscriptions + Auth Hardening',

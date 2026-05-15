@@ -3257,6 +3257,21 @@ Findings #1-2 fixed in v7.1.1, findings #3-15 fixed in this release:
 
 ---
 
+## Version 7.13.1 — USDT Enablement + Solana Pay QR Spec Fix (May 2026)
+
+**Theme**: Small follow-up to v7.13.0 — surface a stablecoin that was already wired in the token registries but gated by an enum, and bring Solana receive QRs in line with the Solana Pay spec.
+
+### Delivered Features
+- USDT is now a first-class send/receive asset alongside USDC. `App\Domain\MobilePayment\Enums\PaymentAsset` gains a `USDT` case (decimals=6, label "Tether USD"). The `WalletQuoteRequest` and `CreatePaymentIntentRequest` validators reference `PaymentAsset::values()` so the enum addition auto-extends every endpoint they protect. `WalletReceiveController`'s previously hard-coded `'in:USDC'` validator is replaced with the same enum reference.
+- `EvmTokens::USDT` and `SolanaTokens::KNOWN_MINTS` already carried the USDT contract addresses (polygon `0xc213…58e8f`, arbitrum `0xfd08…fcbb9`, ethereum `0xdac1…31ec7`) and the Solana mint (`Es9v…NYB`) from the v7.12.0 non-custodial Wallet Send work, so the call-encoding and webhook-reconciliation paths needed no change.
+- Solana Pay spec compliance — `ReceiveAddressService::buildQrValue` previously emitted `solana:<addr>?spl-token=USDC`, but [solanapay.com/spec](https://docs.solanapay.com/spec) requires the `spl-token` parameter to be the SPL mint address, not the symbol. A new `SolanaTokens::mintFor()` helper resolves the canonical mint per asset (`USDC` → `EPjF…Dt1v`, `USDT` → `Es9v…NYB`). Old QRs were technically spec-noncompliant even for USDC; strict wallets (Phantom, Solflare) now scan correctly.
+- `CreatePaymentIntentRequest` validation messages dropped the misleading "Only USDC is supported for v1" / "Only SOLANA and TRON networks are supported for v1" strings (both stale post-v7.12.0 / v7.13.1).
+
+### Operational Follow-Up
+- Pimlico's sponsorship policy needs USDT contract addresses added on polygon, arbitrum, and ethereum mainnets, otherwise `pm_sponsorUserOperation` will decline to sponsor USDT transfers. Solana USDT is unaffected (no paymaster on Solana — fees paid in SOL from the user's account). Tracked outside the repo.
+
+---
+
 ## Version 7.13.0 — Plan B Subscriptions / In-App Purchases (May 2026)
 
 **Theme**: Mobile-driven IAP subscriptions (Apple App Store + Google Play) with a hardened revenue path — webhook-replay-safe ingestion, trial-card-fingerprint anti-abuse, GDPR consent log, and ERR_SUB_002 mobile-error contract.
@@ -3350,5 +3365,5 @@ Embeddable JS widget that renders Zelta's 402 payment flow inside the partner's 
 
 ---
 
-*Document Version: 7.13.0*
-*Updated: May 14, 2026 (v7.13.0 Plan B IAP subscriptions + ERR_SUB_002 mobile contract + Privy web `/login` Origin fix)*
+*Document Version: 7.13.1*
+*Updated: May 15, 2026 (v7.13.1 USDT enablement + Solana Pay QR spec fix)*
