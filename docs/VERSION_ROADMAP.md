@@ -3272,6 +3272,20 @@ Findings #1-2 fixed in v7.1.1, findings #3-15 fixed in this release:
 
 ---
 
+## Version 7.13.2 — Mobile Wallet Bug-Fix Patch (May 2026)
+
+**Theme**: Three small, independent server-side fixes surfaced by mobile Build #8 — Solana send unblocked, receipts work for non-intent transactions, privacy merkle-root gives a clean 4xx/5xx instead of a 500.
+
+### Delivered Features
+- Wallet prepare network-casing fix (#1064). `POST /api/v1/wallet/transactions/prepare` previously validated `network` against a hard-coded `'in:solana,polygon,base,arbitrum,ethereum'` rule (lowercase-only), while the quote endpoint used `PaymentNetwork::from($network)` which only accepts the canonical enum values — `SOLANA`/`TRON` uppercase, `polygon`/`base`/`arbitrum`/`ethereum` lowercase. Mobile sending `network: "SOLANA"` (as it does for quote) was rejected on prepare with "selected network is invalid", and the lowercase string `"solana"` wasn't a valid enum case at all. Both endpoints now share `Rule::enum(PaymentNetwork::class)`, so the wire contract is identical and `Rule::enum` is the single source of truth. The downstream `$networkKey = strtolower(...)` normalisation inside `prepareTransaction` is unchanged (internal lowercase-string branching keeps working).
+- Receipt endpoint Solana-inbound fallback (#1066). `POST /api/v1/transactions/{txId}/receipt` previously looked up `PaymentIntent::where('public_id', $txId)`, but Solana inbound USDC/USDT lands in `activity_feed_items` + `blockchain_address_transactions` directly via `HeliusTransactionProcessor` — no `PaymentIntent` exists, the lookup returned null, and the controller emitted 422 "Receipt can only be generated for confirmed transactions" even though the activity feed reported the same transaction as `confirmed`. `ReceiptService::generateReceipt` now resolves the `ActivityFeedItem` first (matching the unified ID mobile already gets back from `GET /wallet/transactions` and `GET /transactions/{id}`), then either pulls merchant + fee details from the linked `PaymentIntent` via `reference_type`/`reference_id` (preserving merchant-payment behaviour) or builds the receipt from the activity row + Helius `metadata.tx_hash` / `metadata.fee_usd` when no intent exists. `payment_intent_id` was already nullable in the schema; non-intent receipts use `(user_id, tx_hash)` for idempotency.
+- Privacy merkle-root 503 guard (#1065). `GET /api/v1/privacy/merkle-root?network=…` or `?chain_id=…` previously emitted an uncaught `RuntimeException` from `MerkleTreeService::fetchMerkleRootFromChain` (thrown by the production binding's "not implemented" path) as a generic HTTP 500. The controller now catches `RuntimeException` and returns `HTTP 503 { error: { code: "ERR_PRIVACY_310", message: "Privacy pool is not available on this deployment." } }`, giving mobile's shield-feature gating a stable code to branch on. The service layer is unchanged — `RuntimeException` remains the correct "not configured" signal from the provider; only the controller translation is new.
+
+### CLAUDE.md
+- Wallet Send pitfall table gains a "Network casing on quote vs prepare" row pinning the contract: both endpoints validate against `PaymentNetwork::values()` (case-sensitive); response is `{ success, data: { quote_id, network, ... } }` (snake_case keys inside `data`); request bodies on prepare/submit are camelCase (`quoteId`, `intentId`). Future asset/network additions inherit this convention automatically.
+
+---
+
 ## Version 7.13.0 — Plan B Subscriptions / In-App Purchases (May 2026)
 
 **Theme**: Mobile-driven IAP subscriptions (Apple App Store + Google Play) with a hardened revenue path — webhook-replay-safe ingestion, trial-card-fingerprint anti-abuse, GDPR consent log, and ERR_SUB_002 mobile-error contract.
@@ -3365,5 +3379,5 @@ Embeddable JS widget that renders Zelta's 402 payment flow inside the partner's 
 
 ---
 
-*Document Version: 7.13.1*
-*Updated: May 15, 2026 (v7.13.1 USDT enablement + Solana Pay QR spec fix)*
+*Document Version: 7.13.2*
+*Updated: May 15, 2026 (v7.13.2 mobile wallet bug-fix patch — Solana send + receipts + privacy gating)*

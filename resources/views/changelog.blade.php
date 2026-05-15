@@ -5,7 +5,7 @@
 @section('seo')
     @include('partials.seo', [
         'title' => 'Changelog | ' . config('brand.name', 'Zelta'),
-        'description' => 'Release history for the Zelta core banking platform. Track every feature shipped, bug fixed, and improvement made — v7.0 through v7.13.0.',
+        'description' => 'Release history for the Zelta core banking platform. Track every feature shipped, bug fixed, and improvement made — v7.0 through v7.13.2.',
         'keywords' => 'changelog, release notes, updates, ' . config('brand.name', 'Zelta') . ', version history, core banking',
     ])
 
@@ -43,6 +43,19 @@
 
             @php
                 $releases = [
+                    [
+                        'version' => 'v7.13.2',
+                        'date' => 'May 15, 2026',
+                        'label' => 'Mobile Wallet Bug-Fix Patch — Solana Send, Receipts, Privacy Gating',
+                        'label_color' => 'slate',
+                        'badge_color' => 'bg-slate-100 text-slate-700 border-slate-200',
+                        'dot_color' => 'bg-slate-500',
+                        'items' => [
+                            'Wallet send network-casing fix. <code>POST /api/v1/wallet/transactions/prepare</code> previously validated <code>network</code> against a hard-coded <code>in:solana,polygon,base,arbitrum,ethereum</code> list (lowercase only) while the <code>quote</code> endpoint accepted the canonical <code>PaymentNetwork</code> enum values (<code>SOLANA</code> / <code>TRON</code> uppercase, <code>polygon</code> / <code>base</code> / <code>arbitrum</code> / <code>ethereum</code> lowercase). Mobile sending <code>network: "SOLANA"</code> to both endpoints (as it does for quote) was rejected with "selected network is invalid" on prepare, and lowercase <code>"solana"</code> wasn\'t a valid enum case at all. Both endpoints now reference <code>Rule::enum(PaymentNetwork::class)</code> so the wire contract is identical end-to-end. CLAUDE.md gains a pitfall row locking the network-casing + snake/camel field-name conventions for future asset additions.',
+                            'Receipt endpoint now works for Solana inbound transfers and any non-intent activity. <code>POST /api/v1/transactions/{txId}/receipt</code> previously looked up <code>PaymentIntent::where(\'public_id\', $txId)</code>, but Solana inbound USDC and USDT are written directly to <code>activity_feed_items</code> + <code>blockchain_address_transactions</code> by <code>HeliusTransactionProcessor</code> with no <code>PaymentIntent</code> in between. The receipt service now resolves the <code>ActivityFeedItem</code> first (matching the unified ID mobile already gets back from <code>GET /wallet/transactions</code> and <code>GET /transactions/{id}</code>), then either pulls merchant + fee details from the linked <code>PaymentIntent</code> (preserving existing merchant-payment behaviour) or builds the receipt from the activity row + Helius <code>metadata.tx_hash</code> / <code>metadata.fee_usd</code> when no intent exists. <code>payment_intent_id</code> was already nullable in the schema; idempotency keys on <code>(user_id, tx_hash)</code> for non-intent receipts.',
+                            'Privacy merkle-root endpoint now returns a clean 503 instead of a generic 500. <code>GET /api/v1/privacy/merkle-root?network=…</code> or <code>?chain_id=…</code> previously surfaced an uncaught <code>RuntimeException</code> from <code>MerkleTreeService::fetchMerkleRootFromChain</code> when the provider binding wasn\'t operational. The controller now catches and returns <code>HTTP 503 { error: { code: "ERR_PRIVACY_310", message: "Privacy pool is not available on this deployment." } }</code> so mobile\'s shield-feature gating has a stable code to branch on without parsing 500s.',
+                        ],
+                    ],
                     [
                         'version' => 'v7.13.1',
                         'date' => 'May 15, 2026',
