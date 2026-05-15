@@ -207,6 +207,52 @@ describe('PushNotificationService', function () {
         expect($result['status'])->toBe('sent');
     });
 
+    it('persists a device-less notification record when the user has no registered device', function () {
+        $service = new PushNotificationService(null);
+        $user = App\Models\User::factory()->create();
+
+        expect(MobilePushNotification::where('user_id', $user->id)->count())->toBe(0);
+
+        $service->sendToUser(
+            $user,
+            MobilePushNotification::TYPE_TRANSACTION_RECEIVED,
+            'Payment Received',
+            'You received 5 USDC',
+        );
+
+        $notifications = MobilePushNotification::where('user_id', $user->id)->get();
+        expect($notifications)->toHaveCount(1);
+        expect($notifications->first()->mobile_device_id)->toBeNull();
+        expect($notifications->first()->notification_type)->toBe(MobilePushNotification::TYPE_TRANSACTION_RECEIVED);
+    });
+
+    it('keeps unread count consistent with the feed for device-less users', function () {
+        $service = new PushNotificationService(null);
+        $user = App\Models\User::factory()->create();
+
+        $service->sendToUser($user, MobilePushNotification::TYPE_TRANSACTION_RECEIVED, 'T', 'B');
+
+        expect($service->getUnreadCount($user))->toBe(1);
+        expect(MobilePushNotification::where('user_id', $user->id)->count())->toBe(1);
+    });
+
+    it('does not create a device-less duplicate when the user has a push-capable device', function () {
+        $service = new PushNotificationService(null);
+        $user = App\Models\User::factory()->create();
+        MobileDevice::factory()->create([
+            'user_id'    => $user->id,
+            'push_token' => 'fcm-token',
+            'platform'   => 'android',
+            'is_blocked' => false,
+        ]);
+
+        $service->sendToUser($user, MobilePushNotification::TYPE_TRANSACTION_RECEIVED, 'T', 'B');
+
+        $notifications = MobilePushNotification::where('user_id', $user->id)->get();
+        expect($notifications)->toHaveCount(1);
+        expect($notifications->first()->mobile_device_id)->not->toBeNull();
+    });
+
     it('returns error when device has no push token', function () {
         $user = App\Models\User::factory()->create();
         $device = MobileDevice::factory()->create([

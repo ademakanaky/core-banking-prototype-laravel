@@ -50,6 +50,25 @@ class PushNotificationService
 
         $results = [];
 
+        if ($devices->isEmpty()) {
+            // No push-capable device registered (e.g. after a Privy account
+            // switch the device row is still bound to the previous user).
+            // Persist the in-app notification record anyway so the notification
+            // feed and unread count stay consistent — push delivery resumes
+            // once a device is registered.
+            $notification = $this->createNotification(
+                $user,
+                null,
+                $type,
+                $title,
+                $body,
+                $data,
+                $scheduledAt
+            );
+
+            $results['no_device'] = ['status' => 'recorded', 'notification_id' => $notification->id];
+        }
+
         foreach ($devices as $device) {
             $notification = $this->createNotification(
                 $user,
@@ -121,7 +140,7 @@ class PushNotificationService
      */
     private function createNotification(
         User $user,
-        MobileDevice $device,
+        ?MobileDevice $device,
         string $type,
         string $title,
         string $body,
@@ -130,7 +149,7 @@ class PushNotificationService
     ): MobilePushNotification {
         return MobilePushNotification::create([
             'user_id'           => $user->id,
-            'mobile_device_id'  => $device->id,
+            'mobile_device_id'  => $device?->id,
             'notification_type' => $type,
             'title'             => $title,
             'body'              => $body,
