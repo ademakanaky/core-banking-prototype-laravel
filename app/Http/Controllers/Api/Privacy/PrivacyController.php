@@ -19,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
 use OpenApi\Attributes as OA;
+use RuntimeException;
 
 /**
  * Privacy API Controller.
@@ -88,6 +89,10 @@ class PrivacyController extends Controller
         response: 401,
         description: 'Unauthenticated'
     )]
+    #[OA\Response(
+        response: 503,
+        description: 'Privacy pool not available'
+    )]
     public function getMerkleRoot(Request $request): JsonResponse
     {
         // Accept both ?network= and ?chain_id= for mobile compatibility
@@ -116,6 +121,13 @@ class PrivacyController extends Controller
                     'supported_networks' => $this->merkleService->getSupportedNetworks(),
                 ],
             ], 400);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'ERR_PRIVACY_310',
+                    'message' => 'Privacy pool is not available on this deployment.',
+                ],
+            ], 503);
         }
     }
 
