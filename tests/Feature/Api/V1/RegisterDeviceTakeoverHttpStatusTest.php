@@ -30,12 +30,15 @@ class RegisterDeviceTakeoverHttpStatusTest extends TestCase
         $owner = User::factory()->create();
         $attacker = User::factory()->create();
 
+        // Credential-bound device — biometric material is bound to the owner,
+        // so the guard must still reject reassignment (the genuine #348 threat).
         MobileDevice::create([
-            'user_id'     => $owner->id,
-            'device_id'   => 'shared-device-uuid',
-            'platform'    => 'android',
-            'app_version' => '1.0.0',
-            'push_token'  => 'fcm-original-token',
+            'user_id'           => $owner->id,
+            'device_id'         => 'shared-device-uuid',
+            'platform'          => 'android',
+            'app_version'       => '1.0.0',
+            'push_token'        => 'fcm-original-token',
+            'biometric_enabled' => true,
         ]);
 
         Sanctum::actingAs($attacker, ['read', 'write', 'delete']);
@@ -90,6 +93,49 @@ class RegisterDeviceTakeoverHttpStatusTest extends TestCase
             'device_id'  => 'self-owned-device',
             'user_id'    => $user->id,
             'push_token' => 'apns-new-token',
+        ]);
+    }
+
+    public function test_push_only_device_is_reassigned_to_new_user_returns_201(): void
+    {
+        $previousOwner = User::factory()->create();
+        $newOwner = User::factory()->create();
+
+        // Push-only device — no biometric/passkey bound. After a Privy account
+        // switch the row is still pointed at the previous identity. This is
+        // reassignable: there's no credential material to take over.
+        MobileDevice::create([
+            'user_id'     => $previousOwner->id,
+            'device_id'   => 'push-only-uuid',
+            'platform'    => 'android',
+            'app_version' => '1.0.0',
+            'push_token'  => 'fcm-previous-token',
+        ]);
+
+        Sanctum::actingAs($newOwner, ['read', 'write', 'delete']);
+
+        $this->postJson('/api/v1/notifications/register-device', [
+            'device_id'   => 'push-only-uuid',
+            'platform'    => 'android',
+            'app_version' => '1.1.0',
+            'push_token'  => 'fcm-new-token',
+        ])->assertStatus(201);
+
+        // The device_id now belongs to the new owner; the previous row is gone.
+        $this->assertDatabaseHas('mobile_devices', [
+            'device_id'  => 'push-only-uuid',
+            'user_id'    => $newOwner->id,
+            'push_token' => 'fcm-new-token',
+        ]);
+        $this->assertDatabaseMissing('mobile_devices', [
+            'device_id' => 'push-only-uuid',
+            'user_id'   => $previousOwner->id,
+        ]);
+        $this->assertDatabaseHas('device_reassignment_log', [
+            'device_id'        => 'push-only-uuid',
+            'previous_user_id' => $previousOwner->id,
+            'new_user_id'      => $newOwner->id,
+            'reason'           => 'auto_push_only',
         ]);
     }
 }
