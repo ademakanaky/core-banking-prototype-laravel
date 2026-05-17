@@ -121,6 +121,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Verification Fees
+    |--------------------------------------------------------------------------
+    |
+    | KYC / verification fee schedule. `enabled` is the master switch: when
+    | false (the launch default) verification is free — the API reports a
+    | $0 fee for every level so the mobile "fee = 0 -> no payment step" path
+    | applies, and the pay endpoints reject. Paid verification can be turned
+    | back on later without an app release.
+    |
+    | Note: charging for a digital service outside Play Billing risks Android
+    | store rejection — only re-enable once the IAP rail is production-ready.
+    |
+    */
+    'verification_fees' => [
+        'enabled' => (bool) env('TRUSTCERT_VERIFICATION_FEES_ENABLED', false),
+
+        // Fee schedule by numeric trust level (USD). Applied only when enabled.
+        'level_fees' => [
+            1 => '4.99',
+            2 => '4.99',
+            3 => '9.99',
+            4 => '9.99',
+        ],
+
+        // IAP product IDs by numeric level — must exist in App Store Connect
+        // and Play Console before the IAP rail can be used.
+        'iap_product_ids' => [
+            1 => 'kyc_verification_level_1',
+            2 => 'kyc_verification_level_2',
+            3 => 'kyc_verification_level_3',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | W3C Standards Compliance
     |--------------------------------------------------------------------------
     */

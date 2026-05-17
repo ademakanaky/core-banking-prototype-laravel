@@ -17,6 +17,11 @@ uses(TestCase::class);
 beforeEach(function (): void {
     config(['cache.default' => 'array']);
 
+    // Paid-verification flow is gated behind a flag (default off). The paid
+    // path tests below assume it is on; the "fees disabled" describe block
+    // overrides it back to false per-test.
+    config(['trustcert.verification_fees.enabled' => true]);
+
     // Recreate table without FK to avoid users table dependency in tests
     Schema::dropIfExists('verification_payments');
     Schema::create('verification_payments', function ($table): void {
@@ -438,6 +443,50 @@ describe('TrustCertPaymentController fee schedule', function (): void {
             ->and(TrustCertPaymentController::getVerificationFee(3))->toBe('9.99')
             ->and(TrustCertPaymentController::getVerificationFee(4))->toBe('9.99')
             ->and(TrustCertPaymentController::getVerificationFee(0))->toBeNull();
+    });
+});
+
+// ---------- Free verification (fees disabled) ----------
+
+describe('TrustCertPaymentController with verification fees disabled', function (): void {
+    it('reports a zero fee for every chargeable level', function (): void {
+        config(['trustcert.verification_fees.enabled' => false]);
+
+        expect(TrustCertPaymentController::getVerificationFee(1))->toBe('0.00')
+            ->and(TrustCertPaymentController::getVerificationFee(2))->toBe('0.00')
+            ->and(TrustCertPaymentController::getVerificationFee(3))->toBe('0.00')
+            ->and(TrustCertPaymentController::getVerificationFee(4))->toBe('0.00')
+            ->and(TrustCertPaymentController::getVerificationFee(0))->toBeNull();
+    });
+
+    it('reports fees as enabled/disabled via the flag', function (): void {
+        config(['trustcert.verification_fees.enabled' => false]);
+        expect(TrustCertPaymentController::feesEnabled())->toBeFalse();
+
+        config(['trustcert.verification_fees.enabled' => true]);
+        expect(TrustCertPaymentController::feesEnabled())->toBeTrue();
+    });
+
+    it('closes the wallet pay endpoint with 403', function (): void {
+        config(['trustcert.verification_fees.enabled' => false]);
+        storeTestApplication(1, 'app_free_wallet', 'basic');
+
+        $controller = new TrustCertPaymentController();
+        $response = $controller->payWallet('app_free_wallet', makePaymentRequest('/pay'));
+
+        expect($response->getStatusCode())->toBe(403)
+            ->and($response->getData(true)['error'])->toBe('ERR_CERT_403');
+    });
+
+    it('closes the card pay endpoint with 403', function (): void {
+        config(['trustcert.verification_fees.enabled' => false]);
+        storeTestApplication(1, 'app_free_card', 'basic');
+
+        $controller = new TrustCertPaymentController();
+        $response = $controller->payCard('app_free_card', makePaymentRequest('/pay/card'));
+
+        expect($response->getStatusCode())->toBe(403)
+            ->and($response->getData(true)['error'])->toBe('ERR_CERT_403');
     });
 });
 
