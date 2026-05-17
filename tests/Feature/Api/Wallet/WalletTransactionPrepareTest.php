@@ -112,4 +112,46 @@ class WalletTransactionPrepareTest extends TestCase
         $response->assertUnprocessable()
             ->assertJsonValidationErrors(['network']);
     }
+
+    public function test_prepare_accepts_quote_id_snake_case(): void
+    {
+        $response = $this->withToken($this->token)
+            ->postJson('/api/v1/wallet/transactions/prepare', [
+                'to'       => '0x742d35cc6634c0532925a3b844bc454e4438f44e',
+                'token'    => 'USDC',
+                'amount'   => '1.50',
+                'network'  => 'polygon',
+                'quote_id' => 'q_test_snake',
+            ]);
+
+        $response->assertJsonMissingValidationErrors(['quote_id', 'quoteId']);
+    }
+
+    public function test_prepare_accepts_quote_id_camel_case(): void
+    {
+        $response = $this->withToken($this->token)
+            ->postJson('/api/v1/wallet/transactions/prepare', [
+                'to'      => '0x742d35cc6634c0532925a3b844bc454e4438f44e',
+                'token'   => 'USDC',
+                'amount'  => '1.50',
+                'network' => 'polygon',
+                'quoteId' => 'q_test_camel',
+            ]);
+
+        $response->assertJsonMissingValidationErrors(['quote_id', 'quoteId']);
+    }
+
+    public function test_prepare_rejects_missing_quote_id_with_snake_case_key(): void
+    {
+        $response = $this->withToken($this->token)
+            ->postJson('/api/v1/wallet/transactions/prepare', [
+                'to'      => '0x742d35cc6634c0532925a3b844bc454e4438f44e',
+                'token'   => 'USDC',
+                'amount'  => '1.50',
+                'network' => 'polygon',
+            ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors(['quote_id']);
+    }
 }

@@ -601,12 +601,12 @@ class MobileWalletController extends Controller
         description: 'Builds the unsigned Solana legacy-tx message bytes (ed25519) or ERC-4337 v0.6 UserOp hash (with Pimlico paymaster sponsorship) for the device to sign via Privy. Persists a `pending` wallet_send_record. Mobile signs and POSTs the signature to /transactions/submit.',
         tags: ['Mobile Wallet'],
         security: [['sanctum' => []]],
-        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(required: ['to', 'token', 'amount', 'network', 'quoteId'], properties: [
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(required: ['to', 'token', 'amount', 'network', 'quote_id'], properties: [
         new OA\Property(property: 'to', type: 'string', example: '0x1234...abcd or base58 Solana pubkey'),
         new OA\Property(property: 'token', type: 'string', enum: ['USDC', 'USDT'], example: 'USDC'),
         new OA\Property(property: 'amount', type: 'string', example: '1.50', description: 'Decimal major units. Send "1" or "1.5"; not "1000000".'),
         new OA\Property(property: 'network', type: 'string', example: 'SOLANA', description: 'SOLANA | TRON | polygon | base | arbitrum | ethereum (case-sensitive — must match the exact PaymentNetwork enum value, same as the value returned in quote response)'),
-        new OA\Property(property: 'quoteId', type: 'string', example: 'q_abc123'),
+        new OA\Property(property: 'quote_id', type: 'string', example: 'q_abc123', description: 'Canonical snake_case. The legacy camelCase `quoteId` is also accepted.'),
         ]))
     )]
     #[OA\Response(response: 201, description: 'Unsigned payload ready')]
@@ -615,12 +615,19 @@ class MobileWalletController extends Controller
     #[OA\Response(response: 401, description: 'Unauthorized')]
     public function prepareTransaction(Request $request): JsonResponse
     {
+        // Canonical field name is snake_case (`quote_id`) to match the rest of
+        // the API. camelCase (`quoteId`) is still accepted for compatibility
+        // with older mobile builds — see /transactions/submit.
+        $request->merge([
+            'quote_id' => $request->input('quote_id', $request->input('quoteId')),
+        ]);
+
         $validated = $request->validate([
-            'to'      => ['required', 'string', 'min:26', 'max:128'],
-            'token'   => ['required', 'string', 'in:USDC,USDT'],
-            'amount'  => ['required', 'string'],
-            'network' => ['required', 'string', Rule::enum(PaymentNetwork::class)],
-            'quoteId' => ['required', 'string', 'max:64'],
+            'to'       => ['required', 'string', 'min:26', 'max:128'],
+            'token'    => ['required', 'string', 'in:USDC,USDT'],
+            'amount'   => ['required', 'string'],
+            'network'  => ['required', 'string', Rule::enum(PaymentNetwork::class)],
+            'quote_id' => ['required', 'string', 'max:64'],
         ]);
 
         $user = $request->user();
@@ -635,7 +642,7 @@ class MobileWalletController extends Controller
         $assetSymbol = strtoupper((string) $validated['token']);
         $recipient = (string) $validated['to'];
         $amount = (string) $validated['amount'];
-        $quoteId = (string) $validated['quoteId'];
+        $quoteId = (string) $validated['quote_id'];
 
         $sender = $this->resolveSenderAddress($user, $networkKey);
         if ($sender === null) {
@@ -708,8 +715,8 @@ class MobileWalletController extends Controller
         description: 'Attaches a Privy-produced signature (ed25519 for Solana, smart-wallet signature blob for EVM) to the matching prepared record and broadcasts via Helius / Pimlico.',
         tags: ['Mobile Wallet'],
         security: [['sanctum' => []]],
-        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(required: ['intentId', 'signature'], properties: [
-        new OA\Property(property: 'intentId', type: 'string', example: 'pi_send_abc123'),
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(required: ['intent_id', 'signature'], properties: [
+        new OA\Property(property: 'intent_id', type: 'string', example: 'pi_send_abc123', description: 'Canonical snake_case. The legacy camelCase `intentId` is also accepted.'),
         new OA\Property(property: 'signature', type: 'string', example: '0x... or base64 ed25519', description: 'For Solana: 64-byte ed25519 signature, base64-encoded. For EVM: 0x-prefixed hex signature blob from Privy smart wallet.'),
         ]))
     )]
@@ -719,8 +726,14 @@ class MobileWalletController extends Controller
     #[OA\Response(response: 401, description: 'Unauthorized')]
     public function submitTransaction(Request $request): JsonResponse
     {
+        // Canonical field name is snake_case (`intent_id`). camelCase
+        // (`intentId`) is still accepted for compatibility with older builds.
+        $request->merge([
+            'intent_id' => $request->input('intent_id', $request->input('intentId')),
+        ]);
+
         $validated = $request->validate([
-            'intentId'  => ['required', 'string', 'max:64'],
+            'intent_id' => ['required', 'string', 'max:64'],
             'signature' => ['required', 'string', 'min:1', 'max:8192'],
         ]);
 
@@ -731,7 +744,7 @@ class MobileWalletController extends Controller
 
         $record = WalletSendRecord::query()
             ->where('user_id', $user->id)
-            ->where('public_id', (string) $validated['intentId'])
+            ->where('public_id', (string) $validated['intent_id'])
             ->first();
 
         if (! $record instanceof WalletSendRecord) {

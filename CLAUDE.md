@@ -149,7 +149,7 @@ Non-custodial flow. Privy holds the keys (passkey-controlled smart accounts on E
 - Web `/login` Privy email-OTP (gated by `MCP_WEB_PRIVY_LOGIN=true`): server-side REST proxy to `POST /api/v1/passwordless/{init,authenticate}` on `auth.privy.io`. Issues a Laravel session via `Auth::login()` and redirects to `intended()`. Replaces legacy Jetstream email+password when the flag is on. Same `User` table + `firstOrCreate(privy_user_id)` lookup as mobile, so cross-client account merging Just Works. See `app/Http/Controllers/Web/PrivyWebAuthController.php`
 - Address registration: `POST /api/v1/wallet/addresses` — mirrors EVM smart-account address across polygon/base/arbitrum/ethereum, plus one Solana ed25519 row in `blockchain_addresses`
 - Send: `POST /api/v1/wallet/transactions/prepare` returns unsigned payload, `POST /api/v1/wallet/transactions/submit` accepts the signed blob
-- Wire contract is camelCase: `quoteId`, `intentId`, `evm.ownerPasskeyCredentialId`. `Idempotency-Key` is an HTTP header, not a body field.
+- Wire contract: prepare/submit accept snake_case (canonical: `quote_id`, `intent_id`) and still accept legacy camelCase (`quoteId`, `intentId`). `evm.ownerPasskeyCredentialId` stays camelCase. `Idempotency-Key` is an HTTP header, not a body field.
 - Confirmation: `HeliusTransactionProcessor` for Solana (existing webhook), `PollEvmWalletSendConfirmations` for EVM (cron, every minute)
 - Operator commands: `php artisan privy:verify-jwt <token>`, `php artisan wallet:inspect-user <email>`
 - Spec: `docs/superpowers/specs/2026-05-05-wallet-privy-noncustodial-design.md` (if present); see PR #1017
@@ -160,9 +160,9 @@ Non-custodial flow. Privy holds the keys (passkey-controlled smart accounts on E
 | EVM address case | Always `strtolower()` for storage (matches our existing EVM convention) — Solana stays case-sensitive |
 | Float-money amounts | Preparers validate `amount` against numeric-string + bcmath; never `(float)` for money |
 | Idempotency key on the wrong field | It's an HTTP header (`Idempotency-Key`), not a body field — matches `/pay`/`/pay/card` |
-| `quote_id` vs `quoteId` | Wire contract is camelCase across the board (matches mobile RN/TS request types) |
+| `quote_id` vs `quoteId` | prepare/submit normalise both spellings (`$request->merge` before `validate`) — snake_case is canonical, camelCase kept for older builds. Validation errors are keyed `quote_id`/`intent_id` |
 | Adding a new send/receive asset | Add the case to `App\Domain\MobilePayment\Enums\PaymentAsset` (decimals + label) AND make sure `EvmTokens` / `SolanaTokens` have the contract / mint. The receive QR builder uses `SolanaTokens::mintFor()` per Solana Pay spec — `spl-token` must be the mint, not the symbol. v7.13.1 added USDT this way |
-| Network casing on quote vs prepare | Both endpoints validate against `PaymentNetwork::values()` — case-sensitive: `SOLANA`/`TRON` uppercase, `polygon`/`base`/`arbitrum`/`ethereum` lowercase. Pre-existing enum inconsistency; quote response is `{ success, data: { quote_id, network, ... } }` (snake_case keys inside `data`), but request bodies on prepare/submit are camelCase (`quoteId`, `intentId`). Mobile must send the exact enum value (no normalisation) and the exact field name |
+| Network casing on quote vs prepare | Both endpoints validate against `PaymentNetwork::values()` — case-sensitive: `SOLANA`/`TRON` uppercase, `polygon`/`base`/`arbitrum`/`ethereum` lowercase. Pre-existing enum inconsistency; quote response is `{ success, data: { quote_id, network, ... } }` (snake_case keys inside `data`). Request bodies on prepare/submit accept snake_case (canonical) or camelCase for the id field, but the `network` value itself is not normalised — mobile must send the exact enum value |
 
 ## IAP / Subscriptions (v7.13.0+)
 
