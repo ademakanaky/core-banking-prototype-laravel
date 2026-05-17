@@ -644,6 +644,24 @@ class MobileWalletController extends Controller
         $amount = (string) $validated['amount'];
         $quoteId = (string) $validated['quote_id'];
 
+        // Reject sends on EVM networks not enabled for outbound dispatch
+        // (e.g. Ethereum L1 — uncapped, volatile gas that we sponsor).
+        if ($networkKey !== 'solana' && ! $this->isEvmSendNetworkEnabled($networkKey)) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'NETWORK_DISABLED',
+                    'message' => "Sends on '{$networkKey}' are not currently available. Use Base, Arbitrum or Polygon.",
+                ],
+            ], 422);
+        }
+
+        // Anti-abuse guardrail: bound per-user and global sponsored-send volume.
+        $rateLimited = $this->enforceSendRateLimit($user);
+        if ($rateLimited !== null) {
+            return $rateLimited;
+        }
+
         $sender = $this->resolveSenderAddress($user, $networkKey);
         if ($sender === null) {
             return response()->json([
@@ -778,6 +796,79 @@ class MobileWalletController extends Controller
             'success' => true,
             'data'    => $record->toApiResponse(),
         ]);
+    }
+
+    /**
+     * Whether an EVM network is enabled for outbound sends. Solana is handled
+     * separately and is not subject to this list.
+     */
+    private function isEvmSendNetworkEnabled(string $networkKey): bool
+    {
+        /** @var array<int, string> $enabled */
+        $enabled = (array) config('wallet.evm.enabled_networks', []);
+        $enabled = array_map('strtolower', array_map('strval', $enabled));
+
+        return in_array($networkKey, $enabled, true);
+    }
+
+    /**
+     * Anti-abuse guardrail for gas-sponsored sends. Caps per-user and global
+     * send volume per UTC day so a scripted account — or a viral spike —
+     * cannot run up an unbounded paymaster bill. Counters are incremented at
+     * prepare time (the entry point); abandoned prepares count too, which is
+     * deliberately conservative.
+     *
+     * Returns a 429 response when a limit is hit, or null to proceed.
+     */
+    private function enforceSendRateLimit(\App\Models\User $user): ?JsonResponse
+    {
+        $perUserLimit = (int) config('wallet.sponsorship.per_user_daily_limit', 30);
+        $globalLimit = (int) config('wallet.sponsorship.global_daily_limit', 5000);
+
+        $day = now()->utc()->format('Y-m-d');
+        $expiry = now()->addDay();
+        $perUserKey = "wallet_send:count:user:{$user->id}:{$day}";
+        $globalKey = "wallet_send:count:global:{$day}";
+
+        // Cache::add + increment — never read-then-write (concurrency-safe).
+        Cache::add($perUserKey, 0, $expiry);
+        Cache::add($globalKey, 0, $expiry);
+
+        $globalCount = (int) Cache::increment($globalKey);
+        $userCount = (int) Cache::increment($perUserKey);
+
+        if ($globalCount > $globalLimit) {
+            Log::critical('wallet.send global daily sponsorship ceiling reached', [
+                'global_count' => $globalCount,
+                'global_limit' => $globalLimit,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'SEND_TEMPORARILY_UNAVAILABLE',
+                    'message' => 'Sends are temporarily paused. Please try again later.',
+                ],
+            ], 429);
+        }
+
+        if ($userCount > $perUserLimit) {
+            Log::warning('wallet.send per-user daily limit reached', [
+                'user_id'    => $user->id,
+                'user_count' => $userCount,
+                'user_limit' => $perUserLimit,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'SEND_DAILY_LIMIT_REACHED',
+                    'message' => "You've reached today's send limit. It resets at 00:00 UTC.",
+                ],
+            ], 429);
+        }
+
+        return null;
     }
 
     /**

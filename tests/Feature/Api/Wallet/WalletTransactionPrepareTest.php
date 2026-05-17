@@ -154,4 +154,62 @@ class WalletTransactionPrepareTest extends TestCase
         $response->assertUnprocessable()
             ->assertJsonValidationErrors(['quote_id']);
     }
+
+    public function test_prepare_rejects_ethereum_l1_send(): void
+    {
+        $response = $this->withToken($this->token)
+            ->postJson('/api/v1/wallet/transactions/prepare', [
+                'to'       => '0x742d35cc6634c0532925a3b844bc454e4438f44e',
+                'token'    => 'USDC',
+                'amount'   => '1.50',
+                'network'  => 'ethereum',
+                'quote_id' => 'q_test_eth_l1',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error.code', 'NETWORK_DISABLED');
+    }
+
+    public function test_prepare_blocks_after_per_user_daily_limit(): void
+    {
+        config(['wallet.sponsorship.per_user_daily_limit' => 2]);
+
+        $body = [
+            'to'       => '0x742d35cc6634c0532925a3b844bc454e4438f44e',
+            'token'    => 'USDC',
+            'amount'   => '1.50',
+            'network'  => 'polygon',
+            'quote_id' => 'q_test_ratelimit',
+        ];
+
+        // First two prepares clear the guardrail — they fail later for an
+        // unrelated reason (no registered sender address), which is not a 429.
+        $this->withToken($this->token)->postJson('/api/v1/wallet/transactions/prepare', $body)
+            ->assertStatus(422)->assertJsonPath('error.code', 'NO_SENDER_ADDRESS');
+        $this->withToken($this->token)->postJson('/api/v1/wallet/transactions/prepare', $body)
+            ->assertStatus(422)->assertJsonPath('error.code', 'NO_SENDER_ADDRESS');
+
+        // Third trips the per-user daily limit.
+        $this->withToken($this->token)->postJson('/api/v1/wallet/transactions/prepare', $body)
+            ->assertStatus(429)->assertJsonPath('error.code', 'SEND_DAILY_LIMIT_REACHED');
+    }
+
+    public function test_prepare_blocks_when_global_daily_ceiling_reached(): void
+    {
+        config(['wallet.sponsorship.global_daily_limit' => 1]);
+
+        $body = [
+            'to'       => '0x742d35cc6634c0532925a3b844bc454e4438f44e',
+            'token'    => 'USDC',
+            'amount'   => '1.50',
+            'network'  => 'polygon',
+            'quote_id' => 'q_test_global',
+        ];
+
+        $this->withToken($this->token)->postJson('/api/v1/wallet/transactions/prepare', $body)
+            ->assertStatus(422)->assertJsonPath('error.code', 'NO_SENDER_ADDRESS');
+
+        $this->withToken($this->token)->postJson('/api/v1/wallet/transactions/prepare', $body)
+            ->assertStatus(429)->assertJsonPath('error.code', 'SEND_TEMPORARILY_UNAVAILABLE');
+    }
 }
