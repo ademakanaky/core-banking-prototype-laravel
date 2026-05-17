@@ -9,6 +9,7 @@ use App\Domain\Account\Models\BlockchainTransaction;
 use App\Domain\MobilePayment\Enums\ActivityItemType;
 use App\Domain\MobilePayment\Models\ActivityFeedItem;
 use App\Domain\Wallet\Constants\SolanaTokens;
+use App\Domain\Wallet\Models\WalletSendRecord;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -71,6 +72,19 @@ class HeliusTransactionProcessor
 
         $metadata = array_intersect_key($tx, array_flip(self::METADATA_WHITELIST));
 
+        $txFailed = $this->isTransactionFailed($tx);
+
+        // An outbound send that originated from our prepare/submit flow already
+        // has a `wallet_send` activity-feed item (projected by
+        // WalletSendRecordObserver). When one exists we skip the duplicate
+        // `solana_tx` feed item and instead drive the record's status — its
+        // observer keeps the feed item in sync.
+        $walletSend = $isIncoming
+            ? null
+            : WalletSendRecord::where('tx_hash', $signature)
+                ->where('network', 'solana')
+                ->first();
+
         $wasCreated = false;
 
         DB::transaction(function () use (
@@ -86,6 +100,8 @@ class HeliusTransactionProcessor
             $userId,
             $token,
             $occurredAt,
+            $txFailed,
+            $walletSend,
             &$wasCreated,
         ): void {
             try {
@@ -98,7 +114,7 @@ class HeliusTransactionProcessor
                         'fee'          => $fee,
                         'from_address' => $fromAddr ?? '',
                         'to_address'   => $toAddr ?? '',
-                        'status'       => 'confirmed',
+                        'status'       => $txFailed ? 'failed' : 'confirmed',
                         'metadata'     => $metadata,
                     ]
                 );
@@ -123,42 +139,70 @@ class HeliusTransactionProcessor
                 throw $e;
             }
 
-            ActivityFeedItem::firstOrCreate(
-                ['reference_type' => 'solana_tx', 'reference_id' => $refId],
-                [
-                    'user_id'       => $userId,
-                    'activity_type' => $isIncoming ? ActivityItemType::TRANSFER_IN : ActivityItemType::TRANSFER_OUT,
-                    'amount'        => $isIncoming ? $amount : '-' . $amount,
-                    'asset'         => $token,
-                    'network'       => 'solana',
-                    'status'        => 'confirmed',
-                    'protected'     => false,
-                    'from_address'  => $fromAddr,
-                    'to_address'    => $toAddr,
-                    'occurred_at'   => $occurredAt ?? now(),
-                    'metadata'      => ['signature' => $signature],
-                ]
-            );
+            // Skip the solana_tx feed item when the WalletSendRecordObserver
+            // already owns a feed item for this outbound send — avoids a
+            // duplicate row for the same transaction.
+            if ($walletSend === null) {
+                ActivityFeedItem::firstOrCreate(
+                    ['reference_type' => 'solana_tx', 'reference_id' => $refId],
+                    [
+                        'user_id'       => $userId,
+                        'activity_type' => $isIncoming ? ActivityItemType::TRANSFER_IN : ActivityItemType::TRANSFER_OUT,
+                        'amount'        => $isIncoming ? $amount : '-' . $amount,
+                        'asset'         => $token,
+                        'network'       => 'solana',
+                        'status'        => $txFailed ? 'failed' : 'confirmed',
+                        'protected'     => false,
+                        'from_address'  => $fromAddr,
+                        'to_address'    => $toAddr,
+                        'occurred_at'   => $occurredAt ?? now(),
+                        'metadata'      => ['signature' => $signature],
+                    ]
+                );
+            }
 
-            // Outbound wallet send confirmation: if a wallet_send_records row
-            // is awaiting this signature, flip it to confirmed. This is the
-            // production confirmation path for Solana sends — the EVM side
+            // Outbound wallet send: flip the awaiting record to its terminal
+            // state. Driven through the model (->update, not a bulk query) so
+            // WalletSendRecordObserver re-projects the activity feed. This is
+            // the production confirmation path for Solana sends — the EVM side
             // uses a polling job against bundler getUserOperationByHash.
-            if (! $isIncoming) {
-                \App\Domain\Wallet\Models\WalletSendRecord::query()
-                    ->where('tx_hash', $signature)
-                    ->where('network', 'solana')
-                    ->whereIn('status', ['pending', 'submitted'])
-                    ->update([
+            if ($walletSend !== null && in_array($walletSend->status, ['pending', 'submitted'], true)) {
+                if ($txFailed) {
+                    $walletSend->update([
+                        'status'        => 'failed',
+                        'error_code'    => 'SOLANA_TX_FAILED',
+                        'error_message' => 'This transfer could not be completed on the Solana network.',
+                        'failed_at'     => now(),
+                    ]);
+                } else {
+                    $walletSend->update([
                         'status'       => 'confirmed',
                         'confirmed_at' => now(),
                     ]);
+                }
             }
 
             $wasCreated = $btx->wasRecentlyCreated;
         });
 
         return $wasCreated;
+    }
+
+    /**
+     * Detect a failed Solana transaction from a Helius enhanced payload.
+     *
+     * Helius sets `transactionError` to null on success and to an error
+     * object/string on failure. A failed tx must not be persisted as
+     * `confirmed` — otherwise a doomed send (e.g. insufficient SOL for the
+     * network fee) would look successful in the activity feed.
+     *
+     * @param array<string, mixed> $tx
+     */
+    private function isTransactionFailed(array $tx): bool
+    {
+        $err = $tx['transactionError'] ?? null;
+
+        return $err !== null && $err !== '' && $err !== [];
     }
 
     /**

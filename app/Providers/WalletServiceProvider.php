@@ -53,5 +53,11 @@ class WalletServiceProvider extends ServiceProvider
         \App\Domain\Relayer\Models\SmartAccount::observe(
             \App\Domain\Wallet\Observers\SmartAccountObserver::class,
         );
+
+        // Project outbound wallet sends into the activity feed so pending and
+        // failed sends are visible in GET /api/v1/wallet/transactions.
+        \App\Domain\Wallet\Models\WalletSendRecord::observe(
+            \App\Domain\Wallet\Observers\WalletSendRecordObserver::class,
+        );
     }
 }

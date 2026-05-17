@@ -134,6 +134,9 @@ Route::prefix('v1/wallet')->name('mobile.wallet.')
         Route::get('/transactions', [MobileWalletController::class, 'transactions'])
             ->middleware('api.rate_limit:query')
             ->name('transactions');
+        Route::get('/transactions/by-intent/{intentId}', [MobileWalletController::class, 'transactionByIntent'])
+            ->middleware('api.rate_limit:query')
+            ->name('transactions.by-intent');
         Route::get('/transactions/{id}', [MobileWalletController::class, 'transactionDetail'])
             ->middleware('api.rate_limit:query')
             ->name('transactions.detail');
