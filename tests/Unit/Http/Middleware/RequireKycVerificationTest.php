@@ -36,6 +36,13 @@ it('allows verified users through', function () {
 });
 
 it('allows unverified users to access KYC payment endpoints', function () {
+    // Verification fees on, so the pay endpoint runs its normal flow and
+    // returns 404 for a missing application. With fees off it would short
+    // out at 403 "free verification" before that — either way the point is
+    // that the KYC middleware did not intercept (that would be 403
+    // ERR_KYC_REQUIRED).
+    config(['trustcert.verification_fees.enabled' => true]);
+
     $user = User::factory()->create(['kyc_status' => 'not_started']);
     Sanctum::actingAs($user, ['read', 'write', 'delete']);
 
