@@ -105,6 +105,35 @@ class WalletSendRecord extends Model
         ];
     }
 
+    /**
+     * Flat, snake_case status payload for the per-intent polling endpoint
+     * (GET /api/v1/wallet/transactions/by-intent/{intentId}).
+     *
+     * `status` is the lowercase lifecycle value (pending/submitted/confirmed/
+     * failed). `error_message` is best-effort human-readable text; mobile
+     * should branch on the stable `error_code`.
+     *
+     * @return array<string, mixed>
+     */
+    public function toIntentStatusResponse(): array
+    {
+        return [
+            'intent_id'     => $this->public_id,
+            'status'        => $this->status,
+            'network'       => $this->network,
+            'asset'         => $this->asset,
+            'amount'        => $this->amount,
+            'tx_hash'       => $this->tx_hash,
+            'explorer_url'  => $this->buildExplorerUrl(),
+            'error_code'    => $this->error_code,
+            'error_message' => $this->error_message,
+            'created_at'    => $this->created_at->toIso8601String(),
+            'submitted_at'  => $this->submitted_at?->toIso8601String(),
+            'confirmed_at'  => $this->confirmed_at?->toIso8601String(),
+            'failed_at'     => $this->failed_at?->toIso8601String(),
+        ];
+    }
+
     private function buildExplorerUrl(): ?string
     {
         if ($this->tx_hash === null) {

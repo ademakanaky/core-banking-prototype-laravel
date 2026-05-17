@@ -587,6 +587,69 @@ class MobileWalletController extends Controller
     }
 
     /**
+     * Get live status for a wallet send by its intent id (`pi_send_…`).
+     *
+     * Lets mobile poll a send through to a terminal state from the
+     * send-confirmation screen: `submit` returns immediately, so this is how
+     * the UI learns the final outcome (confirmed vs failed) and the on-chain
+     * tx hash / explorer link once available.
+     */
+    #[OA\Get(
+        path: '/api/v1/wallet/transactions/by-intent/{intentId}',
+        operationId: 'walletTransactionByIntent',
+        summary: 'Get wallet send status by intent id',
+        description: 'Returns the live status of a wallet send identified by its prepare/submit intent id.',
+        tags: ['Mobile Wallet'],
+        security: [['sanctum' => []]],
+        parameters: [
+        new OA\Parameter(name: 'intentId', in: 'path', required: true, description: 'Send intent id (pi_send_…)', schema: new OA\Schema(type: 'string')),
+        ]
+    )]
+    #[OA\Response(
+        response: 200,
+        description: 'Wallet send status',
+        content: new OA\JsonContent(properties: [
+        new OA\Property(property: 'success', type: 'boolean', example: true),
+        new OA\Property(property: 'data', type: 'object', description: 'Wallet send status object'),
+        ])
+    )]
+    #[OA\Response(
+        response: 404,
+        description: 'Intent not found'
+    )]
+    #[OA\Response(
+        response: 401,
+        description: 'Unauthorized'
+    )]
+    public function transactionByIntent(string $intentId, Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user instanceof \App\Models\User) {
+            return response()->json([
+                'success' => false,
+                'error'   => ['code' => 'UNAUTHORIZED', 'message' => 'Not authenticated.'],
+            ], 401);
+        }
+
+        $record = WalletSendRecord::query()
+            ->where('user_id', $user->id)
+            ->where('public_id', $intentId)
+            ->first();
+
+        if (! $record instanceof WalletSendRecord) {
+            return response()->json([
+                'success' => false,
+                'error'   => ['code' => 'INTENT_NOT_FOUND', 'message' => 'No send matches this id.'],
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => $record->toIntentStatusResponse(),
+        ]);
+    }
+
+    /**
      * Step 1 of a non-custodial send: build the unsigned payload for the
      * device to sign.
      *

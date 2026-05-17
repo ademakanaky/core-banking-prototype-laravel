@@ -216,11 +216,17 @@ Schedule::command('trustcert:check-expired')
     });
 
 // Wallet send (EVM) confirmation polling — every minute.
-// Solana confirmations come via the Helius webhook (HeliusTransactionProcessor),
-// not this job.
 Schedule::job(new App\Domain\Wallet\Jobs\PollEvmWalletSendConfirmations())
     ->everyMinute()
     ->description('Poll bundler for EVM wallet-send confirmations')
+    ->withoutOverlapping();
+
+// Wallet send (Solana) confirmation polling — every minute. The Helius webhook
+// is the primary path, but does not reliably deliver failed transactions; this
+// job is the safety net that gives every Solana send a terminal state.
+Schedule::job(new App\Domain\Wallet\Jobs\PollSolanaWalletSendConfirmations())
+    ->everyMinute()
+    ->description('Poll Solana RPC for Solana wallet-send confirmations')
     ->withoutOverlapping();
 
 // Daily retention sweep for the public investor lead-capture form.

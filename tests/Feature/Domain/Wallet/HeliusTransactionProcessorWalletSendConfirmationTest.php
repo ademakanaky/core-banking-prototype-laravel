@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Account\Models\BlockchainAddress;
+use App\Domain\MobilePayment\Models\ActivityFeedItem;
 use App\Domain\Wallet\Models\WalletSendRecord;
 use App\Domain\Wallet\Services\HeliusTransactionProcessor;
 use App\Models\User;
@@ -146,4 +147,111 @@ it('does not touch wallet_send_records on incoming (receive) Solana tx', functio
     // Outbound record stays submitted — we don't confirm it from a receive event
     expect($sendRecord->status)->toBe('submitted')
         ->and($sendRecord->confirmed_at)->toBeNull();
+});
+
+it('marks the wallet send failed when the Helius payload reports a transaction error', function (): void {
+    $signature = '7zFailedSignature222222222222222222222222222222222222222222222222';
+
+    $sendRecord = WalletSendRecord::create([
+        'public_id'         => 'pi_send_failedtx',
+        'user_id'           => 42,
+        'network'           => 'solana',
+        'asset'             => 'USDC',
+        'amount'            => '1.00000000',
+        'sender_address'    => 'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+        'recipient_address' => 'BobxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxV',
+        'status'            => 'submitted',
+        'tx_hash'           => $signature,
+        'submitted_at'      => now(),
+    ]);
+
+    $blockchainAddress = BlockchainAddress::create([
+        'uuid'       => '22222222-3333-4444-8555-666666666666',
+        'user_uuid'  => 'user-uuid-42',
+        'address'    => 'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+        'public_key' => 'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+        'chain'      => 'solana',
+        'is_active'  => true,
+    ]);
+
+    // Outbound tx that failed on-chain — Helius reports it via transactionError.
+    $tx = [
+        'signature'        => $signature,
+        'fee'              => 5000,
+        'transactionError' => ['InstructionError' => [0, 'InsufficientFundsForFee']],
+        'tokenTransfers'   => [[
+            'fromUserAccount' => 'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+            'toUserAccount'   => 'BobxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxV',
+            'mint'            => 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+            'tokenAmount'     => '1.0',
+        ]],
+    ];
+
+    app(HeliusTransactionProcessor::class)->processTransaction(
+        'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+        $blockchainAddress,
+        42,
+        $tx,
+    );
+
+    $sendRecord->refresh();
+    expect($sendRecord->status)->toBe('failed')
+        ->and($sendRecord->error_code)->toBe('SOLANA_TX_FAILED')
+        ->and($sendRecord->failed_at)->not->toBeNull();
+
+    // The observer-owned feed item reflects the failure.
+    $item = ActivityFeedItem::where('reference_id', $sendRecord->id)->first();
+    expect($item)->not->toBeNull()
+        ->and($item->status)->toBe('failed');
+});
+
+it('does not create a duplicate feed item for a tracked outbound send', function (): void {
+    $signature = '8xDedupSignature3333333333333333333333333333333333333333333333333';
+
+    // Creating the record projects exactly one wallet_send feed item (observer).
+    $sendRecord = WalletSendRecord::create([
+        'public_id'         => 'pi_send_deduptest',
+        'user_id'           => 42,
+        'network'           => 'solana',
+        'asset'             => 'USDC',
+        'amount'            => '2.00000000',
+        'sender_address'    => 'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+        'recipient_address' => 'BobxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxV',
+        'status'            => 'submitted',
+        'tx_hash'           => $signature,
+        'submitted_at'      => now(),
+    ]);
+
+    $blockchainAddress = BlockchainAddress::create([
+        'uuid'       => '33333333-4444-4555-8666-777777777777',
+        'user_uuid'  => 'user-uuid-42',
+        'address'    => 'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+        'public_key' => 'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+        'chain'      => 'solana',
+        'is_active'  => true,
+    ]);
+
+    $tx = [
+        'signature'      => $signature,
+        'fee'            => 5000,
+        'tokenTransfers' => [[
+            'fromUserAccount' => 'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+            'toUserAccount'   => 'BobxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxV',
+            'mint'            => 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+            'tokenAmount'     => '2.0',
+        ]],
+    ];
+
+    app(HeliusTransactionProcessor::class)->processTransaction(
+        'EfkncjQTojTB6m9DqoyBqizLLwZgLu1uwg3Y3FqE6f7Z',
+        $blockchainAddress,
+        42,
+        $tx,
+    );
+
+    // Still exactly one feed item — the observer-owned one, now confirmed.
+    expect(ActivityFeedItem::count())->toBe(1);
+    $item = ActivityFeedItem::first();
+    expect($item->reference_type)->toBe(WalletSendRecord::class)
+        ->and($item->status)->toBe('confirmed');
 });
