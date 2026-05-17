@@ -166,6 +166,47 @@ class NotificationControllerTest extends TestCase
             ->assertJsonPath('data.unread_count', 2);
     }
 
+    public function test_list_notifications_includes_flat_mobile_aliases(): void
+    {
+        Sanctum::actingAs($this->user, ['read']);
+
+        $this->createNotification();
+        $this->createNotification(['read_at' => now(), 'status' => 'read']);
+
+        $response = $this->getJson('/api/v1/notifications')
+            ->assertOk()
+            ->assertJsonStructure([
+                'data',
+                'meta',
+                'notifications' => [
+                    '*' => ['id', 'type', 'title', 'body', 'data', 'read', 'created_at'],
+                ],
+                'total',
+                'unread',
+            ]);
+
+        $data = $response->json();
+        $this->assertCount(2, $data['notifications']);
+        $this->assertEquals(2, $data['total']);
+        $this->assertEquals(1, $data['unread']);
+        // Flat aliases must stay consistent with the canonical envelope.
+        $this->assertEquals($data['meta']['total'], $data['total']);
+        $this->assertEquals($data['meta']['unread_count'], $data['unread']);
+    }
+
+    public function test_list_notifications_returns_empty_array_when_none_exist(): void
+    {
+        Sanctum::actingAs($this->user, ['read']);
+
+        $response = $this->getJson('/api/v1/notifications')
+            ->assertOk()
+            ->assertJsonStructure(['notifications', 'total', 'unread']);
+
+        $this->assertSame([], $response->json('notifications'));
+        $this->assertSame(0, $response->json('total'));
+        $this->assertSame(0, $response->json('unread'));
+    }
+
     public function test_list_notifications_default_limit_is_20(): void
     {
         Sanctum::actingAs($this->user, ['read']);

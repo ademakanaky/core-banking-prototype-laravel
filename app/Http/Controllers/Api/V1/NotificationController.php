@@ -64,6 +64,9 @@ class NotificationController extends Controller
                     new OA\Property(property: 'limit', type: 'integer'),
                     new OA\Property(property: 'unread_count', type: 'integer'),
                 ]),
+                new OA\Property(property: 'notifications', type: 'array', description: 'Flat alias of `data` for the mobile client.', items: new OA\Items(type: 'object')),
+                new OA\Property(property: 'total', type: 'integer', description: 'Flat alias of `meta.total`.'),
+                new OA\Property(property: 'unread', type: 'integer', description: 'Flat alias of `meta.unread_count`.'),
             ]
         )
     )]
@@ -93,15 +96,24 @@ class NotificationController extends Controller
 
         $total = $query->count();
         $notifications = $query->skip($offset)->take($limit)->get();
+        $items = NotificationResource::collection($notifications);
+        $unread = $this->pushService->getUnreadCount($user);
 
         return response()->json([
-            'data' => NotificationResource::collection($notifications),
+            'data' => $items,
             'meta' => [
                 'total'        => $total,
                 'offset'       => $offset,
                 'limit'        => $limit,
-                'unread_count' => $this->pushService->getUnreadCount($user),
+                'unread_count' => $unread,
             ],
+            // Flat aliases for the mobile notifications screen, which reads a
+            // top-level `notifications` array plus `total`/`unread` scalars.
+            // Kept alongside the canonical `data`/`meta` envelope so neither
+            // contract breaks.
+            'notifications' => $items,
+            'total'         => $total,
+            'unread'        => $unread,
         ]);
     }
 
