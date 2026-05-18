@@ -3,10 +3,13 @@
 declare(strict_types=1);
 
 use App\Domain\Account\Models\BlockchainAddress;
+use App\Domain\Account\Models\BlockchainTransaction;
 use App\Domain\Mobile\Services\PushNotificationService;
+use App\Domain\MobilePayment\Models\ActivityFeedItem;
 use App\Domain\Relayer\Contracts\WalletBalanceProviderInterface;
 use App\Domain\Relayer\Models\SmartAccount;
 use App\Domain\Wallet\Events\Broadcast\WalletBalanceUpdated;
+use App\Domain\Wallet\Services\EvmTransactionProcessor;
 use App\Jobs\ProcessAlchemyWebhookJob;
 use App\Models\User;
 use Illuminate\Support\Facades\Event;
@@ -93,11 +96,29 @@ it('processes USDC token transfer for known blockchain address', function (): vo
     $pushService->shouldReceive('sendTransactionReceived')->once();
 
     $job = new ProcessAlchemyWebhookJob($payload);
-    $job->handle($balanceProvider, $pushService);
+    $job->handle($balanceProvider, $pushService, new EvmTransactionProcessor());
 
     Event::assertDispatched(WalletBalanceUpdated::class, function (WalletBalanceUpdated $event) use ($user): bool {
         return $event->userId === $user->id && $event->chainId === 'ethereum';
     });
+
+    // The transfer is now mirrored into our DB (audit row + activity feed).
+    $btx = BlockchainTransaction::where('tx_hash', '0xabc123')->where('chain', 'ethereum')->first();
+    expect($btx)->not->toBeNull();
+    assert($btx instanceof BlockchainTransaction);
+    expect($btx->type)->toBe('receive')
+        ->and($btx->status)->toBe('confirmed')
+        ->and((float) $btx->amount)->toBe(100.0);
+
+    $feedItem = ActivityFeedItem::where('reference_type', 'evm_tx')
+        ->where('reference_id', EvmTransactionProcessor::txHashToReferenceId('ethereum', '0xabc123'))
+        ->first();
+    expect($feedItem)->not->toBeNull();
+    assert($feedItem instanceof ActivityFeedItem);
+    expect($feedItem->activity_type->value)->toBe('transfer_in')
+        ->and($feedItem->asset)->toBe('USDC')
+        ->and($feedItem->network)->toBe('ethereum')
+        ->and((int) $feedItem->user_id)->toBe($user->id);
 });
 
 it('resolves user from smart_accounts table', function (): void {
@@ -132,7 +153,7 @@ it('resolves user from smart_accounts table', function (): void {
     $pushService->shouldReceive('sendTransactionReceived')->once();
 
     $job = new ProcessAlchemyWebhookJob($payload);
-    $job->handle($balanceProvider, $pushService);
+    $job->handle($balanceProvider, $pushService, new EvmTransactionProcessor());
 
     Event::assertDispatched(WalletBalanceUpdated::class, function (WalletBalanceUpdated $event) use ($user): bool {
         return $event->userId === $user->id && $event->chainId === 'polygon';
@@ -170,7 +191,7 @@ it('filters out spam tokens (non-USDC/USDT)', function (): void {
     $pushService->shouldNotReceive('sendTransactionSent');
 
     $job = new ProcessAlchemyWebhookJob($payload);
-    $job->handle($balanceProvider, $pushService);
+    $job->handle($balanceProvider, $pushService, new EvmTransactionProcessor());
 
     Event::assertNotDispatched(WalletBalanceUpdated::class);
 });
@@ -206,7 +227,7 @@ it('skips activities with removed flag (block reorg)', function (): void {
     $pushService->shouldNotReceive('sendTransactionReceived');
 
     $job = new ProcessAlchemyWebhookJob($payload);
-    $job->handle($balanceProvider, $pushService);
+    $job->handle($balanceProvider, $pushService, new EvmTransactionProcessor());
 
     Event::assertNotDispatched(WalletBalanceUpdated::class);
 });
@@ -249,7 +270,7 @@ it('deduplicates notifications per user within batch', function (): void {
     $pushService->shouldReceive('sendTransactionReceived')->once();
 
     $job = new ProcessAlchemyWebhookJob($payload);
-    $job->handle($balanceProvider, $pushService);
+    $job->handle($balanceProvider, $pushService, new EvmTransactionProcessor());
 
     // Only one broadcast despite two activities for same user
     Event::assertDispatched(WalletBalanceUpdated::class, 1);

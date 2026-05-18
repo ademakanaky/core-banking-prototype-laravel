@@ -10,6 +10,7 @@ use App\Domain\Relayer\Contracts\WalletBalanceProviderInterface;
 use App\Domain\Relayer\Enums\SupportedNetwork;
 use App\Domain\Relayer\Models\SmartAccount;
 use App\Domain\Wallet\Events\Broadcast\WalletBalanceUpdated;
+use App\Domain\Wallet\Services\EvmTransactionProcessor;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -63,6 +64,7 @@ class ProcessAlchemyWebhookJob implements ShouldQueue
     public function handle(
         WalletBalanceProviderInterface $balanceProvider,
         PushNotificationService $pushService,
+        EvmTransactionProcessor $evmProcessor,
     ): void {
         $network = $this->resolveNetwork((string) ($this->payload['event']['network'] ?? ''));
         $activities = $this->payload['event']['activity'] ?? [];
@@ -71,6 +73,10 @@ class ProcessAlchemyWebhookJob implements ShouldQueue
         $notifiedUsers = [];
 
         foreach ($activities as $activity) {
+            if (! is_array($activity)) {
+                continue;
+            }
+
             // Reorg check: skip removed transactions
             if (($activity['removed'] ?? false) === true) {
                 Log::debug('Alchemy webhook: skipping removed (reorged) activity', [
@@ -119,6 +125,21 @@ class ProcessAlchemyWebhookJob implements ShouldQueue
                     continue;
                 }
                 $notifiedUsers[$userId] = true;
+
+                // Mirror the transfer into our DB so it appears in the in-app
+                // transaction history and the admin wallet view — the EVM
+                // counterpart of HeliusTransactionProcessor. Only Privy/mobile
+                // wallets have a per-chain blockchain_addresses row; legacy
+                // relayer smart accounts (smart_accounts only) are skipped.
+                if ($network !== null) {
+                    $blockchainAddress = BlockchainAddress::where('address', $address)
+                        ->where('chain', $network)
+                        ->first();
+
+                    if ($blockchainAddress !== null) {
+                        $evmProcessor->processActivity($address, $blockchainAddress, $userId, $network, $activity);
+                    }
+                }
 
                 $this->invalidateBalanceCache($address, $network, $balanceProvider);
 
