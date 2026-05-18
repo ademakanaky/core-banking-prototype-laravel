@@ -316,73 +316,71 @@ it('rejects a signature that is not 64 bytes', function (): void {
     $builder->serializeSignedTransaction($built['message'], random_bytes(63));
 })->throws(InvalidArgumentException::class);
 
-describe('sponsored (fee-payer) message', function (): void {
-    test('a distinct fee payer produces a two-signer message with the sponsor at index 0', function (): void {
-        $sender = makePubkey('sponsored-sender');
-        $recipient = makePubkey('sponsored-recipient');
-        $feePayer = makePubkey('sponsored-feepayer');
-        $blockhash = Base58::encode(random_bytes(32));
+test('sponsored: a distinct fee payer produces a two-signer message with the sponsor at index 0', function (): void {
+    $sender = makePubkey('sponsored-sender');
+    $recipient = makePubkey('sponsored-recipient');
+    $feePayer = makePubkey('sponsored-feepayer');
+    $blockhash = Base58::encode(random_bytes(32));
 
-        $built = (new SolanaTransferBuilder())->buildSplTransfer(
-            $sender,
-            $recipient,
-            USDC_MINT,
-            50_000,
-            $blockhash,
-            false,
-            $feePayer,
-        );
+    $built = (new SolanaTransferBuilder())->buildSplTransfer(
+        $sender,
+        $recipient,
+        USDC_MINT,
+        50_000,
+        $blockhash,
+        false,
+        $feePayer,
+    );
 
-        $message = $built['message'];
+    $message = $built['message'];
 
-        expect(ord($message[0]))->toBe(2)            // numRequiredSignatures
-            ->and(ord($message[1]))->toBe(1)         // numReadonlySigned (the sender authority)
-            ->and($built['numRequiredSignatures'])->toBe(2)
-            ->and($built['feePayer'])->toBe($feePayer)
-            // Account index 0 is the fee payer; index 1 is the sender.
-            ->and(substr($message, 4, 32))->toBe(Base58::decode($feePayer))
-            ->and(substr($message, 36, 32))->toBe(Base58::decode($sender));
-    });
-
-    test('a fee payer equal to the sender stays a single-signer message', function (): void {
-        $sender = makePubkey('selfpay-sender');
-        $recipient = makePubkey('selfpay-recipient');
-        $blockhash = Base58::encode(random_bytes(32));
-
-        $built = (new SolanaTransferBuilder())->buildSplTransfer(
-            $sender,
-            $recipient,
-            USDC_MINT,
-            1,
-            $blockhash,
-            false,
-            $sender, // fee payer == sender
-        );
-
-        expect($built['numRequiredSignatures'])->toBe(1)
-            ->and($built['feePayer'])->toBe($sender);
-    });
-
-    test('serializeWithSignatures prepends shortvec(2) + both signatures in order', function (): void {
-        $sender = makePubkey('wire-sender');
-        $recipient = makePubkey('wire-recipient');
-        $feePayer = makePubkey('wire-feepayer');
-        $blockhash = Base58::encode(random_bytes(32));
-
-        $builder = new SolanaTransferBuilder();
-        $built = $builder->buildSplTransfer($sender, $recipient, USDC_MINT, 100, $blockhash, false, $feePayer);
-
-        $sponsorSig = random_bytes(64);
-        $senderSig = random_bytes(64);
-        $wire = $builder->serializeWithSignatures($built['message'], [$sponsorSig, $senderSig]);
-
-        expect($wire[0])->toBe(chr(2))
-            ->and(substr($wire, 1, 64))->toBe($sponsorSig)
-            ->and(substr($wire, 65, 64))->toBe($senderSig)
-            ->and(substr($wire, 129))->toBe($built['message']);
-    });
-
-    test('serializeWithSignatures rejects an empty signature list', function (): void {
-        (new SolanaTransferBuilder())->serializeWithSignatures('message-bytes', []);
-    })->throws(InvalidArgumentException::class);
+    expect(ord($message[0]))->toBe(2)            // numRequiredSignatures
+        ->and(ord($message[1]))->toBe(1)         // numReadonlySigned (the sender authority)
+        ->and($built['numRequiredSignatures'])->toBe(2)
+        ->and($built['feePayer'])->toBe($feePayer)
+        // Account index 0 is the fee payer; index 1 is the sender.
+        ->and(substr($message, 4, 32))->toBe(Base58::decode($feePayer))
+        ->and(substr($message, 36, 32))->toBe(Base58::decode($sender));
 });
+
+test('sponsored: a fee payer equal to the sender stays a single-signer message', function (): void {
+    $sender = makePubkey('selfpay-sender');
+    $recipient = makePubkey('selfpay-recipient');
+    $blockhash = Base58::encode(random_bytes(32));
+
+    $built = (new SolanaTransferBuilder())->buildSplTransfer(
+        $sender,
+        $recipient,
+        USDC_MINT,
+        1,
+        $blockhash,
+        false,
+        $sender, // fee payer == sender
+    );
+
+    expect($built['numRequiredSignatures'])->toBe(1)
+        ->and($built['feePayer'])->toBe($sender);
+});
+
+test('sponsored: serializeWithSignatures prepends shortvec(2) + both signatures in order', function (): void {
+    $sender = makePubkey('wire-sender');
+    $recipient = makePubkey('wire-recipient');
+    $feePayer = makePubkey('wire-feepayer');
+    $blockhash = Base58::encode(random_bytes(32));
+
+    $builder = new SolanaTransferBuilder();
+    $built = $builder->buildSplTransfer($sender, $recipient, USDC_MINT, 100, $blockhash, false, $feePayer);
+
+    $sponsorSig = random_bytes(64);
+    $senderSig = random_bytes(64);
+    $wire = $builder->serializeWithSignatures($built['message'], [$sponsorSig, $senderSig]);
+
+    expect($wire[0])->toBe(chr(2))
+        ->and(substr($wire, 1, 64))->toBe($sponsorSig)
+        ->and(substr($wire, 65, 64))->toBe($senderSig)
+        ->and(substr($wire, 129))->toBe($built['message']);
+});
+
+it('rejects an empty signature list passed to serializeWithSignatures', function (): void {
+    (new SolanaTransferBuilder())->serializeWithSignatures('message-bytes', []);
+})->throws(InvalidArgumentException::class);

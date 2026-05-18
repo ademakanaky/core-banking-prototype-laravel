@@ -298,6 +298,7 @@ describe('sponsored send', function (): void {
                 return $decoded[0] === chr(2)
                     && substr($decoded, 65, 64) === $deviceSig
                     && substr($decoded, 129) === $message
+                    && $sponsorSig !== ''
                     // The sponsor signature must verify against the sponsor key.
                     && sodium_crypto_sign_verify_detached($sponsorSig, $message, $sponsorPublicRaw);
             }))

@@ -60,6 +60,8 @@ class SolanaSponsorSigner
      * Produce the sponsor's detached 64-byte ed25519 signature over the given
      * unsigned Solana message bytes.
      *
+     * @return non-empty-string the 64-byte ed25519 signature
+     *
      * @throws RuntimeException when no sponsor key is configured
      */
     public function sign(string $messageBytes): string
@@ -67,6 +69,7 @@ class SolanaSponsorSigner
         $secret = $this->decodedSecretKey();
 
         try {
+            // sodium_crypto_sign_detached always returns a 64-byte signature.
             $signature = sodium_crypto_sign_detached($messageBytes, $secret);
         } catch (SodiumException $e) {
             throw new RuntimeException('Failed to produce Solana sponsor signature: ' . $e->getMessage(), 0, $e);

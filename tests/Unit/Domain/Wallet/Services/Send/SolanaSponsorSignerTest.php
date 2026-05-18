@@ -8,7 +8,7 @@ use App\Domain\Wallet\Services\Send\SolanaSponsorSigner;
 uses(Tests\TestCase::class);
 
 /**
- * @return array{secretBase58: string, publicBase58: string, publicRaw: string}
+ * @return array{secretBase58: string, publicBase58: string, publicRaw: non-empty-string}
  */
 function makeSponsorKeypair(): array
 {

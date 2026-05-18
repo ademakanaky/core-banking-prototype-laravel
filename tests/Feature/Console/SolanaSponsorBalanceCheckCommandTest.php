@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Domain\Wallet\Exceptions\SolanaRpcException;
 use App\Domain\Wallet\Helpers\Crypto\Base58;
 use App\Domain\Wallet\Services\Send\HeliusRpcClient;
-use Mockery\MockInterface;
 
 /**
  * Configure a valid sponsor key and return its base58 public address.
@@ -15,6 +15,16 @@ function configureSponsorKey(): string
     config(['wallet.solana.sponsor.secret_key' => Base58::encode(sodium_crypto_sign_secretkey($kp))]);
 
     return Base58::encode(sodium_crypto_sign_publickey($kp));
+}
+
+/**
+ * Bind a HeliusRpcClient whose getBalance() returns the given lamport value.
+ */
+function fakeHeliusBalance(int $lamports): void
+{
+    $rpc = Mockery::mock(HeliusRpcClient::class);
+    $rpc->shouldReceive('getBalance')->once()->andReturn($lamports);
+    app()->instance(HeliusRpcClient::class, $rpc);
 }
 
 it('is a no-op when the sponsor key is not configured', function (): void {
@@ -28,10 +38,7 @@ it('is a no-op when the sponsor key is not configured', function (): void {
 it('reports success when the sponsor balance is above the threshold', function (): void {
     configureSponsorKey();
     config(['wallet.solana.sponsor.low_balance_lamports' => 100_000_000]);
-
-    $this->mock(HeliusRpcClient::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getBalance')->once()->andReturn(500_000_000); // 0.5 SOL
-    });
+    fakeHeliusBalance(500_000_000); // 0.5 SOL
 
     $this->artisan('solana:check-sponsor-balance')
         ->expectsOutputToContain('OK')
@@ -41,10 +48,7 @@ it('reports success when the sponsor balance is above the threshold', function (
 it('fails loudly when the sponsor balance is below the threshold', function (): void {
     configureSponsorKey();
     config(['wallet.solana.sponsor.low_balance_lamports' => 100_000_000]);
-
-    $this->mock(HeliusRpcClient::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getBalance')->once()->andReturn(10_000_000); // 0.01 SOL
-    });
+    fakeHeliusBalance(10_000_000); // 0.01 SOL
 
     $this->artisan('solana:check-sponsor-balance')
         ->expectsOutputToContain('LOW')
@@ -54,11 +58,11 @@ it('fails loudly when the sponsor balance is below the threshold', function (): 
 it('fails when the RPC balance lookup errors', function (): void {
     configureSponsorKey();
 
-    $this->mock(HeliusRpcClient::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('getBalance')->once()->andThrow(
-            App\Domain\Wallet\Exceptions\SolanaRpcException::fromRpcError(0, 'RPC unreachable'),
-        );
-    });
+    $rpc = Mockery::mock(HeliusRpcClient::class);
+    $rpc->shouldReceive('getBalance')->once()->andThrow(
+        SolanaRpcException::fromRpcError(0, 'RPC unreachable'),
+    );
+    app()->instance(HeliusRpcClient::class, $rpc);
 
     $this->artisan('solana:check-sponsor-balance')->assertExitCode(1);
 });
