@@ -8,8 +8,12 @@ use App\Domain\MobilePayment\Enums\ActivityItemType;
 use App\Domain\MobilePayment\Models\ActivityFeedItem;
 use App\Domain\MobilePayment\Models\PaymentIntent;
 use App\Domain\MobilePayment\Models\PaymentReceipt;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Service for generating and retrieving payment receipts.
@@ -176,17 +180,53 @@ class ReceiptService
     }
 
     /**
-     * Cache the receipt's API representation if it was just persisted.
+     * Generate the receipt PDF then cache its API representation — but only
+     * when the receipt was just persisted, so repeat lookups stay cheap and
+     * idempotent.
      */
     private function cacheIfNew(PaymentReceipt $receipt): void
     {
-        if ($receipt->wasRecentlyCreated) {
-            $cacheHours = (int) config('mobile_payment.receipt_cache_hours', 24);
-            Cache::put(
-                "receipt:{$receipt->public_id}",
-                $receipt->toApiResponse(),
-                now()->addHours($cacheHours)
-            );
+        if (! $receipt->wasRecentlyCreated) {
+            return;
+        }
+
+        $this->generatePdf($receipt);
+
+        $cacheHours = (int) config('mobile_payment.receipt_cache_hours', 24);
+        Cache::put(
+            "receipt:{$receipt->public_id}",
+            $receipt->toApiResponse(),
+            now()->addHours($cacheHours)
+        );
+    }
+
+    /**
+     * Render the receipt to a PDF and store it on the public disk.
+     *
+     * Failures are logged but never bubble up: a missing PDF degrades to
+     * `pdfUrl: null` (mobile falls back to the hosted share page) rather
+     * than failing receipt generation outright.
+     */
+    private function generatePdf(PaymentReceipt $receipt): void
+    {
+        try {
+            /** @var \Barryvdh\DomPDF\PDF $pdf */
+            $pdf = Pdf::loadView('receipts.show', [
+                'receipt' => $receipt,
+                'forPdf'  => true,
+            ]);
+            $pdf->setPaper('a4', 'portrait');
+
+            $path = 'receipts/' . $receipt->share_token . '.pdf';
+            Storage::disk('public')->put($path, $pdf->output());
+
+            $receipt->pdf_path = $path;
+            $receipt->save();
+        } catch (Throwable $e) {
+            Log::error('Receipt PDF generation failed', [
+                'receipt_id' => $receipt->public_id,
+                'error'      => $e->getMessage(),
+            ]);
         }
     }
 

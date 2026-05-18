@@ -40,14 +40,13 @@ class ReceiptController extends Controller
         new OA\Property(property: 'success', type: 'boolean', example: true),
         new OA\Property(property: 'data', type: 'object', properties: [
         new OA\Property(property: 'receiptId', type: 'string', example: 'rcpt_abc123'),
-        new OA\Property(property: 'transactionId', type: 'string', example: 'tx_abc123'),
-        new OA\Property(property: 'amount', type: 'number', example: 25.50),
+        new OA\Property(property: 'merchantName', type: 'string', example: 'Coffee Shop'),
+        new OA\Property(property: 'amount', type: 'string', example: '25.50'),
         new OA\Property(property: 'asset', type: 'string', example: 'USDC'),
-        new OA\Property(property: 'merchant', type: 'object', properties: [
-        new OA\Property(property: 'displayName', type: 'string', example: 'Coffee Shop'),
-        ]),
-        new OA\Property(property: 'timestamp', type: 'string', format: 'date-time'),
-        new OA\Property(property: 'hash', type: 'string', description: 'On-chain transaction hash'),
+        new OA\Property(property: 'dateTime', type: 'string', format: 'date-time'),
+        new OA\Property(property: 'networkFee', type: 'string', example: '0.01 USD'),
+        new OA\Property(property: 'sharePayload', type: 'string', description: 'Public URL of the hosted receipt page', example: 'https://app.zelta.app/receipt/abc...'),
+        new OA\Property(property: 'pdfUrl', type: 'string', nullable: true, description: 'Public URL of the downloadable receipt PDF (null if generation failed)', example: 'https://app.zelta.app/storage/receipts/abc....pdf'),
         ]),
         ])
     )]

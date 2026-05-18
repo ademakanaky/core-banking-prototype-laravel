@@ -12,6 +12,7 @@ use App\Domain\MobilePayment\Models\ActivityFeedItem;
 use App\Domain\MobilePayment\Models\PaymentIntent;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -25,6 +26,7 @@ class ReceiptControllerTest extends TestCase
     {
         parent::setUp();
         Cache::flush();
+        Storage::fake('public');
 
         $this->user = User::factory()->create();
         $this->token = $this->user->createToken('test-token', ['read', 'write', 'delete'])->plainTextToken;
@@ -65,6 +67,7 @@ class ReceiptControllerTest extends TestCase
                     'dateTime',
                     'networkFee',
                     'sharePayload',
+                    'pdfUrl',
                 ],
             ])
             ->assertJsonPath('data.merchantName', 'Received')
@@ -72,6 +75,11 @@ class ReceiptControllerTest extends TestCase
             ->assertJsonPath('data.networkFee', '0.0003 USD');
 
         $this->assertSame('1.5', (string) (float) $response->json('data.amount'));
+
+        // The share link points at the hosted receipt page, and a PDF was generated.
+        $this->assertStringContainsString('/receipt/', (string) $response->json('data.sharePayload'));
+        $this->assertNotNull($response->json('data.pdfUrl'));
+        $this->assertStringContainsString('receipts/', (string) $response->json('data.pdfUrl'));
     }
 
     public function test_returns_422_for_pending_activity_feed_item(): void

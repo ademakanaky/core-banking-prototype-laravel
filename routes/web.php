@@ -889,6 +889,13 @@ Route::prefix('foodo')->group(function () {
     Route::post('/dish/{id}/verify', [App\Http\Controllers\Foodo\FoodoDishAnalysisController::class, 'verify'])->name('foodo.dish.verify');
 });
 
+// Public payment receipt page — shareable, no auth (keyed on an unguessable
+// 64-char share_token). This is the target of the `sharePayload` link
+// returned by POST /api/v1/transactions/{txId}/receipt.
+Route::get('/receipt/{shareToken}', [App\Http\Controllers\Web\ReceiptController::class, 'show'])
+    ->middleware('throttle:60,1')
+    ->name('receipt.show');
+
 // SEO routes - Sitemap and Robots.txt
 Route::get('/sitemap.xml', [App\Http\Controllers\SitemapController::class, 'index'])->name('sitemap');
 Route::get('/robots.txt', [App\Http\Controllers\SitemapController::class, 'robots'])->name('robots');
