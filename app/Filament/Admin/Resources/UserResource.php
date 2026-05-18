@@ -132,7 +132,9 @@ class UserResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            UserResource\RelationManagers\BlockchainAddressesRelationManager::class,
+            UserResource\RelationManagers\BlockchainTransactionsRelationManager::class,
+            UserResource\RelationManagers\WalletSendRecordsRelationManager::class,
         ];
     }
 
