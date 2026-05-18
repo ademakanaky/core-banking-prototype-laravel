@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Domain\Wallet\Exceptions\InvalidSendStateException;
 use App\Domain\Wallet\Exceptions\InvalidSignatureException;
 use App\Domain\Wallet\Exceptions\SolanaRpcException;
 use App\Domain\Wallet\Helpers\Crypto\Base58;
 use App\Domain\Wallet\Models\WalletSendRecord;
 use App\Domain\Wallet\Services\Send\HeliusRpcClient;
 use App\Domain\Wallet\Services\Send\SolanaSendSubmitter;
+use App\Domain\Wallet\Services\Send\SolanaSponsorSigner;
 use App\Domain\Wallet\Services\Send\SolanaTransferBuilder;
 use App\Models\User;
 use Illuminate\Support\Facades\Schema;
@@ -128,7 +130,7 @@ it('flips a pending record to submitted on a successful Helius broadcast', funct
         }))
         ->andReturn($expectedSignature);
 
-    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder());
+    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
     $result = $submitter->submit($record, $signatureBase64);
 
     expect($result->status)->toBe(WalletSendRecord::STATUS_SUBMITTED)
@@ -147,7 +149,7 @@ it('returns the record unchanged when it is already submitted', function (): voi
     $rpc = Mockery::mock(HeliusRpcClient::class);
     $rpc->shouldNotReceive('sendTransaction');
 
-    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder());
+    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
     $result = $submitter->submit($record, base64_encode(random_bytes(64)));
 
     expect($result->status)->toBe(WalletSendRecord::STATUS_SUBMITTED)
@@ -165,7 +167,7 @@ it('returns the record unchanged when it is already confirmed', function (): voi
     $rpc = Mockery::mock(HeliusRpcClient::class);
     $rpc->shouldNotReceive('sendTransaction');
 
-    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder());
+    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
     $result = $submitter->submit($record, base64_encode(random_bytes(64)));
 
     expect($result->status)->toBe(WalletSendRecord::STATUS_CONFIRMED)
@@ -183,7 +185,7 @@ it('returns the record unchanged when it is already failed', function (): void {
     $rpc = Mockery::mock(HeliusRpcClient::class);
     $rpc->shouldNotReceive('sendTransaction');
 
-    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder());
+    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
     $result = $submitter->submit($record, base64_encode(random_bytes(64)));
 
     expect($result->status)->toBe(WalletSendRecord::STATUS_FAILED)
@@ -197,7 +199,7 @@ it('throws InvalidSignatureException when the signature is not 64 bytes', functi
     $rpc = Mockery::mock(HeliusRpcClient::class);
     $rpc->shouldNotReceive('sendTransaction');
 
-    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder());
+    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
 
     // Only 32 bytes — too short.
     $submitter->submit($record, base64_encode(random_bytes(32)));
@@ -213,7 +215,7 @@ it('flips the record to failed with HELIUS_REJECTED when the RPC raises SolanaRp
         ->once()
         ->andThrow(SolanaRpcException::fromRpcError(-32002, 'Transaction simulation failed: insufficient funds'));
 
-    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder());
+    $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
     $result = $submitter->submit($record, $signatureBase64);
 
     expect($result->status)->toBe(WalletSendRecord::STATUS_FAILED)
@@ -221,4 +223,106 @@ it('flips the record to failed with HELIUS_REJECTED when the RPC raises SolanaRp
         ->and($result->error_message)->toContain('Transaction simulation failed')
         ->and($result->failed_at)->not->toBeNull()
         ->and($result->tx_hash)->toBeNull();
+});
+
+describe('sponsored send', function (): void {
+    /**
+     * Build a sponsored pending record: a two-signer message with the sponsor
+     * as fee payer and metadata flagged `sponsored`.
+     *
+     * @return array{record: WalletSendRecord, message: string, sponsorPublic: string}
+     */
+    function makeSponsoredPendingRecord(string $sponsorPublicBase58): array
+    {
+        $user = User::factory()->create();
+        $sender = makeSubmitterPubkey('sponsored-sender-' . Str::random(6));
+        $recipient = makeSubmitterPubkey('sponsored-recipient-' . Str::random(6));
+        $blockhash = Base58::encode(random_bytes(32));
+
+        $built = (new SolanaTransferBuilder())->buildUnsignedTransferMessage(
+            $sender,
+            $recipient,
+            'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+            1_500_000,
+            $blockhash,
+            false,
+            $sponsorPublicBase58,
+        );
+
+        $record = WalletSendRecord::create([
+            'public_id'         => 'pi_send_' . Str::random(20),
+            'user_id'           => $user->id,
+            'network'           => 'solana',
+            'asset'             => 'USDC',
+            'amount'            => '1.50000000',
+            'sender_address'    => $sender,
+            'recipient_address' => $recipient,
+            'status'            => WalletSendRecord::STATUS_PENDING,
+            'metadata'          => [
+                'message_bytes_base64'    => base64_encode($built['message']),
+                'recent_blockhash'        => $blockhash,
+                'last_valid_block_height' => 4242,
+                'mint'                    => 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                'atomic_amount'           => '1500000',
+                'recipient_ata'           => $built['recipientAta'],
+                'sponsored'               => true,
+                'fee_payer'               => $sponsorPublicBase58,
+            ],
+        ]);
+
+        return ['record' => $record, 'message' => $built['message'], 'sponsorPublic' => $sponsorPublicBase58];
+    }
+
+    it('co-signs with the sponsor and broadcasts a two-signature transaction', function (): void {
+        $kp = sodium_crypto_sign_keypair();
+        $sponsorSecret = sodium_crypto_sign_secretkey($kp);
+        $sponsorPublicRaw = sodium_crypto_sign_publickey($kp);
+        config(['wallet.solana.sponsor.secret_key' => Base58::encode($sponsorSecret)]);
+
+        ['record' => $record, 'message' => $message] = makeSponsoredPendingRecord(Base58::encode($sponsorPublicRaw));
+
+        $deviceSig = random_bytes(64);
+
+        /** @var HeliusRpcClient&MockInterface $rpc */
+        $rpc = Mockery::mock(HeliusRpcClient::class);
+        $rpc->shouldReceive('sendTransaction')
+            ->once()
+            ->with(Mockery::on(function ($base64Tx) use ($deviceSig, $message, $sponsorPublicRaw): bool {
+                $decoded = base64_decode((string) $base64Tx, true);
+                if (! is_string($decoded) || $decoded === '') {
+                    return false;
+                }
+                // Wire format: shortvec(2)=0x02 + sponsor sig + device sig + message.
+                $sponsorSig = substr($decoded, 1, 64);
+
+                return $decoded[0] === chr(2)
+                    && substr($decoded, 65, 64) === $deviceSig
+                    && substr($decoded, 129) === $message
+                    // The sponsor signature must verify against the sponsor key.
+                    && sodium_crypto_sign_verify_detached($sponsorSig, $message, $sponsorPublicRaw);
+            }))
+            ->andReturn('SPONSORED_SIG_RETURNED');
+
+        $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
+        $result = $submitter->submit($record, base64_encode($deviceSig));
+
+        expect($result->status)->toBe(WalletSendRecord::STATUS_SUBMITTED)
+            ->and($result->tx_hash)->toBe('SPONSORED_SIG_RETURNED');
+    });
+
+    it('throws when a sponsored record is submitted but the sponsor key is gone', function (): void {
+        $kp = sodium_crypto_sign_keypair();
+        $sponsorPublicRaw = sodium_crypto_sign_publickey($kp);
+
+        // Record was prepared sponsored, but the key is no longer configured.
+        config(['wallet.solana.sponsor.secret_key' => '']);
+        ['record' => $record] = makeSponsoredPendingRecord(Base58::encode($sponsorPublicRaw));
+
+        /** @var HeliusRpcClient&MockInterface $rpc */
+        $rpc = Mockery::mock(HeliusRpcClient::class);
+        $rpc->shouldNotReceive('sendTransaction');
+
+        $submitter = new SolanaSendSubmitter($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
+        $submitter->submit($record, base64_encode(random_bytes(64)));
+    })->throws(InvalidSendStateException::class);
 });

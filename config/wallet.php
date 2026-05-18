@@ -20,6 +20,31 @@ return [
         'priority_fee_microlamports' => (int) env('SOLANA_PRIORITY_FEE_MICROLAMPORTS', 1000),
         // Compute unit limit for a single SPL transfer (with optional ATA create).
         'compute_unit_limit' => (int) env('SOLANA_COMPUTE_UNIT_LIMIT', 200000),
+
+        /*
+        |----------------------------------------------------------------------
+        | Fee-Payer (Sponsor) Account
+        |----------------------------------------------------------------------
+        |
+        | A non-custodial Solana wallet holds SPL stablecoins but typically no
+        | SOL, so it cannot pay its own transaction fee — the send fails with
+        | "Attempt to debit an account but found no record of a prior credit".
+        | When `secret_key` is set, the platform's sponsor account becomes the
+        | transaction fee payer (account index 0) and co-signs every send; the
+        | user's device still signs as the transfer authority. Leave it empty
+        | to keep the legacy behaviour (sender pays its own fee).
+        |
+        | `secret_key` is the base58-encoded 64-byte ed25519 secret key
+        | (32-byte seed || 32-byte public key — the standard Solana layout).
+        | Generate it OFF-machine and store it only in the secret manager.
+        |
+        */
+        'sponsor' => [
+            'secret_key' => (string) env('WALLET_SOLANA_SPONSOR_SECRET_KEY', ''),
+            // Alert threshold for the scheduled balance check, in lamports.
+            // 1 SOL = 1_000_000_000 lamports; default 0.1 SOL.
+            'low_balance_lamports' => (int) env('WALLET_SOLANA_SPONSOR_LOW_BALANCE_LAMPORTS', 100_000_000),
+        ],
     ],
 
     /*
