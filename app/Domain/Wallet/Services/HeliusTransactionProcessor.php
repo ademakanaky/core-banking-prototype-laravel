@@ -74,6 +74,12 @@ class HeliusTransactionProcessor
 
         $txFailed = $this->isTransactionFailed($tx);
 
+        // Tiny unsolicited inbound SOL transfers are dusting / address-poisoning
+        // spam. Persist the BlockchainTransaction for audit, but keep the feed
+        // item out of the activity feed (and ProcessHeliusWebhookJob suppresses
+        // the matching push).
+        $isDust = $this->isDust($isIncoming, $token, $amount);
+
         // An outbound send that originated from our prepare/submit flow already
         // has a `wallet_send` activity-feed item (projected by
         // WalletSendRecordObserver). When one exists we skip the duplicate
@@ -102,6 +108,7 @@ class HeliusTransactionProcessor
             $occurredAt,
             $txFailed,
             $walletSend,
+            $isDust,
             &$wasCreated,
         ): void {
             try {
@@ -141,8 +148,9 @@ class HeliusTransactionProcessor
 
             // Skip the solana_tx feed item when the WalletSendRecordObserver
             // already owns a feed item for this outbound send — avoids a
-            // duplicate row for the same transaction.
-            if ($walletSend === null) {
+            // duplicate row for the same transaction — or when the transfer
+            // is inbound dust (recorded above, but not surfaced to the user).
+            if ($walletSend === null && ! $isDust) {
                 ActivityFeedItem::firstOrCreate(
                     ['reference_type' => 'solana_tx', 'reference_id' => $refId],
                     [
@@ -203,6 +211,44 @@ class HeliusTransactionProcessor
         $err = $tx['transactionError'] ?? null;
 
         return $err !== null && $err !== '' && $err !== [];
+    }
+
+    /**
+     * Decide whether an inbound transfer is dust / address-poisoning spam.
+     *
+     * Solana addresses are public, so anyone can send a wallet tiny
+     * unsolicited SOL transfers. Such transfers are still recorded as a
+     * BlockchainTransaction for audit, but are kept out of the activity feed
+     * and suppress the push notification. Only native-SOL transfers are
+     * considered — USDC/USDT token transfers are always real product activity.
+     *
+     * @param array<string, mixed> $tx
+     */
+    public function isInboundDust(string $address, array $tx): bool
+    {
+        return $this->isDust(
+            $this->isIncoming($address, $tx),
+            $this->resolveToken($tx),
+            $this->resolveAmount($tx),
+        );
+    }
+
+    /**
+     * Dust test against already-resolved transaction primitives.
+     */
+    private function isDust(bool $isIncoming, string $token, string $amount): bool
+    {
+        if (! $isIncoming || $token !== 'SOL') {
+            return false;
+        }
+
+        $threshold = (string) config('wallet.solana.dust.min_inbound_sol', '0.001');
+
+        if (! is_numeric($threshold) || ! is_numeric($amount)) {
+            return false;
+        }
+
+        return bccomp($amount, $threshold, 9) < 0;
     }
 
     /**
