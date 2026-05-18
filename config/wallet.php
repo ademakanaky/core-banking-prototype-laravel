@@ -45,6 +45,23 @@ return [
             // 1 SOL = 1_000_000_000 lamports; default 0.1 SOL.
             'low_balance_lamports' => (int) env('WALLET_SOLANA_SPONSOR_LOW_BALANCE_LAMPORTS', 100_000_000),
         ],
+
+        /*
+        |----------------------------------------------------------------------
+        | Inbound Dust Filter
+        |----------------------------------------------------------------------
+        |
+        | Solana addresses are public, so anyone can send a wallet tiny
+        | unsolicited SOL transfers ("dusting" / address-poisoning spam).
+        | Inbound native-SOL transfers below this threshold are still
+        | recorded as a BlockchainTransaction for audit, but are kept out of
+        | the activity feed and suppress the push notification — so spam does
+        | not buzz the user. Token transfers (USDC/USDT) are never filtered.
+        |
+        */
+        'dust' => [
+            'min_inbound_sol' => (string) env('WALLET_SOLANA_DUST_MIN_INBOUND_SOL', '0.001'),
+        ],
     ],
 
     /*

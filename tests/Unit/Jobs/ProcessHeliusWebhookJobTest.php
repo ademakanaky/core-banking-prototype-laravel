@@ -209,3 +209,78 @@ it('resolves USDT token correctly', function (): void {
     assert($feedItem instanceof ActivityFeedItem);
     expect($feedItem->asset)->toBe('USDT');
 });
+
+it('records an inbound dust SOL transfer but neither feeds nor pushes it', function (): void {
+    $user = User::factory()->create();
+    BlockchainAddress::create([
+        'user_uuid'  => $user->uuid,
+        'chain'      => 'solana',
+        'address'    => 'DustReceiver',
+        'public_key' => 'DustReceiver',
+        'is_active'  => true,
+    ]);
+
+    // 0.00001 SOL — classic address-poisoning dust, well below the 0.001 threshold.
+    $tx = makeNativeSolJobTx('sig_dust_001', 'SpamSender', 'DustReceiver', 10000);
+
+    /** @var PushNotificationService&Mockery\MockInterface $pushService */
+    $pushService = Mockery::mock(PushNotificationService::class);
+    $pushService->shouldNotReceive('sendTransactionReceived');
+    $pushService->shouldNotReceive('sendTransactionSent');
+
+    $job = new ProcessHeliusWebhookJob([$tx]);
+    $job->handle(app(HeliusTransactionProcessor::class), $pushService);
+
+    // Recorded for audit...
+    expect(BlockchainTransaction::where('tx_hash', 'sig_dust_001')->exists())->toBeTrue()
+        // ...but kept out of the activity feed.
+        ->and(ActivityFeedItem::where('reference_id', HeliusTransactionProcessor::signatureToUuid('sig_dust_001'))->count())->toBe(0);
+});
+
+it('never filters a tiny token transfer — only native SOL is dust-filtered', function (): void {
+    $user = User::factory()->create();
+    BlockchainAddress::create([
+        'user_uuid'  => $user->uuid,
+        'chain'      => 'solana',
+        'address'    => 'TokenReceiver',
+        'public_key' => 'TokenReceiver',
+        'is_active'  => true,
+    ]);
+
+    // A 0.000001 USDC transfer is tiny, but a token transfer is real product activity.
+    $tx = makeHeliusJobTx('sig_tinytoken_001', 'Sender', 'TokenReceiver', '0.000001');
+
+    /** @var PushNotificationService&Mockery\MockInterface $pushService */
+    $pushService = Mockery::mock(PushNotificationService::class);
+    $pushService->shouldReceive('sendTransactionReceived')->once();
+
+    $job = new ProcessHeliusWebhookJob([$tx]);
+    $job->handle(app(HeliusTransactionProcessor::class), $pushService);
+
+    expect(ActivityFeedItem::where('reference_id', HeliusTransactionProcessor::signatureToUuid('sig_tinytoken_001'))->count())->toBe(1);
+});
+
+it('honours a configurable dust threshold', function (): void {
+    config(['wallet.solana.dust.min_inbound_sol' => '0.000001']);
+
+    $user = User::factory()->create();
+    BlockchainAddress::create([
+        'user_uuid'  => $user->uuid,
+        'chain'      => 'solana',
+        'address'    => 'ThresholdReceiver',
+        'public_key' => 'ThresholdReceiver',
+        'is_active'  => true,
+    ]);
+
+    // 0.00001 SOL is now ABOVE the lowered threshold, so it surfaces normally.
+    $tx = makeNativeSolJobTx('sig_threshold_001', 'Sender', 'ThresholdReceiver', 10000);
+
+    /** @var PushNotificationService&Mockery\MockInterface $pushService */
+    $pushService = Mockery::mock(PushNotificationService::class);
+    $pushService->shouldReceive('sendTransactionReceived')->once();
+
+    $job = new ProcessHeliusWebhookJob([$tx]);
+    $job->handle(app(HeliusTransactionProcessor::class), $pushService);
+
+    expect(ActivityFeedItem::where('reference_id', HeliusTransactionProcessor::signatureToUuid('sig_threshold_001'))->count())->toBe(1);
+});

@@ -224,18 +224,21 @@ class ProcessHeliusWebhookJob implements ShouldQueue
         $fromAddr = $processor->resolveFromAddress($tx);
         $toAddr = $processor->resolveToAddress($tx);
 
-        // Send FCM push notification
-        try {
-            $counterpartyAddr = $isIncoming ? ($fromAddr ?? 'unknown') : ($toAddr ?? 'unknown');
-            $truncatedAddr = substr($counterpartyAddr, 0, 4) . '...' . substr($counterpartyAddr, -4);
+        // Send FCM push notification — but never for inbound dust / address-
+        // poisoning spam, which is recorded for audit yet kept silent.
+        if (! $processor->isInboundDust($address, $tx)) {
+            try {
+                $counterpartyAddr = $isIncoming ? ($fromAddr ?? 'unknown') : ($toAddr ?? 'unknown');
+                $truncatedAddr = substr($counterpartyAddr, 0, 4) . '...' . substr($counterpartyAddr, -4);
 
-            if ($isIncoming) {
-                $pushService->sendTransactionReceived($user, $amount, $token, $truncatedAddr);
-            } else {
-                $pushService->sendTransactionSent($user, $amount, $token, $truncatedAddr);
+                if ($isIncoming) {
+                    $pushService->sendTransactionReceived($user, $amount, $token, $truncatedAddr);
+                } else {
+                    $pushService->sendTransactionSent($user, $amount, $token, $truncatedAddr);
+                }
+            } catch (Throwable $e) {
+                Log::warning('Helius: Push notification failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
             }
-        } catch (Throwable $e) {
-            Log::warning('Helius: Push notification failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
         }
 
         Log::info('Helius: Solana transaction stored and balance update broadcast', [
