@@ -4,12 +4,15 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Domain\Account\Models\Account;
+use App\Domain\Account\Models\BlockchainAddress;
+use App\Domain\Account\Models\BlockchainTransaction;
 use App\Domain\Account\Models\Transaction;
 use App\Domain\Banking\Models\BankAccountModel;
 use App\Domain\Banking\Models\UserBankPreference;
 use App\Domain\Cgo\Models\CgoInvestment;
 use App\Domain\Compliance\Models\KycDocument;
 use App\Domain\User\Values\UserRoles;
+use App\Domain\Wallet\Models\WalletSendRecord;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -353,6 +356,43 @@ class User extends Authenticatable implements FilamentUser
             'uuid', // Local key on users table
             'uuid' // Local key on accounts table
         );
+    }
+
+    /**
+     * The user's non-custodial wallet addresses — one row per chain.
+     *
+     * @return HasMany<BlockchainAddress, $this>
+     */
+    public function blockchainAddresses(): HasMany
+    {
+        return $this->hasMany(BlockchainAddress::class, 'user_uuid', 'uuid');
+    }
+
+    /**
+     * Every on-chain transaction mirrored across the user's wallet addresses.
+     *
+     * @return HasManyThrough<BlockchainTransaction, BlockchainAddress, $this>
+     */
+    public function blockchainTransactions(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            BlockchainTransaction::class,
+            BlockchainAddress::class,
+            'user_uuid',    // Foreign key on blockchain_addresses → users
+            'address_uuid', // Foreign key on blockchain_address_transactions → blockchain_addresses
+            'uuid',         // Local key on users
+            'uuid'          // Local key on blockchain_addresses
+        );
+    }
+
+    /**
+     * The user's outbound wallet sends (prepare/submit flow), all networks.
+     *
+     * @return HasMany<WalletSendRecord, $this>
+     */
+    public function walletSendRecords(): HasMany
+    {
+        return $this->hasMany(WalletSendRecord::class, 'user_id');
     }
 
     /**
