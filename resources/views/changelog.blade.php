@@ -5,7 +5,7 @@
 @section('seo')
     @include('partials.seo', [
         'title' => 'Changelog | ' . config('brand.name', 'Zelta'),
-        'description' => 'Release history for the Zelta core banking platform. Track every feature shipped, bug fixed, and improvement made — v7.0 through v7.13.2.',
+        'description' => 'Release history for the Zelta core banking platform. Track every feature shipped, bug fixed, and improvement made — v7.0 through v7.14.0.',
         'keywords' => 'changelog, release notes, updates, ' . config('brand.name', 'Zelta') . ', version history, core banking',
     ])
 
@@ -43,6 +43,20 @@
 
             @php
                 $releases = [
+                    [
+                        'version' => 'v7.14.0',
+                        'date' => 'May 18, 2026',
+                        'label' => 'Wallet Transaction Mirror — EVM Deposits, Admin Visibility, Receipts &amp; Dust Filtering',
+                        'label_color' => 'blue',
+                        'badge_color' => 'bg-blue-100 text-blue-700 border-blue-200',
+                        'dot_color' => 'bg-blue-500',
+                        'items' => [
+                            'EVM inbound deposits are now mirrored into transaction history. Previously the Alchemy webhook fired a balance update and a push notification for an inbound USDC/USDT transfer on Polygon, Base, Arbitrum, or Ethereum — then discarded the transaction. The deposit never appeared in <code>GET /api/v1/wallet/transactions</code>: the balance moved but no matching entry was shown. The new <code>EvmTransactionProcessor</code> (the EVM counterpart of <code>HeliusTransactionProcessor</code>) persists every transfer to <code>blockchain_address_transactions</code> and <code>activity_feed_items</code>, bringing EVM to parity with Solana. Outbound sends that already own a feed item via <code>WalletSendRecordObserver</code> keep their audit row but skip the duplicate. A new <code>php artisan evm:backfill-transactions</code> command seeds history that predates the live mirror via the Alchemy Transfers API.',
+                            'Per-user wallet visibility in the admin panel. Support staff had no screen for a customer\'s crypto activity — <code>/admin/accounts</code> is the fiat ledger, and no resource surfaced blockchain data. Opening a user in the admin panel now shows three read-only tabs: <strong>Wallet Addresses</strong> (registered addresses per chain), <strong>Blockchain Transactions</strong> (the cross-chain mirror of on-chain activity, including dust hidden from the customer feed), and <strong>Wallet Sends</strong> (the full send lifecycle with <code>error_code</code> / <code>error_message</code>, so support can see exactly why a transfer failed).',
+                            'Hosted receipt page and downloadable PDF. <code>POST /api/v1/transactions/{txId}/receipt</code> returned a <code>sharePayload</code> link pointing at an unregistered <code>/receipt/{id}</code> route — every share link 404\'d — and <code>pdfUrl</code> was always null because no PDF was ever generated. A new public <code>GET /receipt/{shareToken}</code> renders a branded, <code>noindex</code> receipt page keyed on an unguessable token; <code>ReceiptService</code> renders the same view to a PDF (dompdf) stored on the public disk, so <code>pdfUrl</code> is now a real downloadable file.',
+                            'Solana inbound dust filter. A wallet was hit by address-poisoning spam — six unsolicited 0.00001 SOL transfers — and each one became an activity-feed entry <em>and</em> a push notification. Inbound native-SOL transfers below <code>WALLET_SOLANA_DUST_MIN_INBOUND_SOL</code> (default 0.001 SOL) are now recorded as a <code>BlockchainTransaction</code> for audit but kept out of the activity feed, and the push is suppressed. Token transfers (USDC/USDT) are never filtered.',
+                        ],
+                    ],
                     [
                         'version' => 'v7.13.2',
                         'date' => 'May 15, 2026',
