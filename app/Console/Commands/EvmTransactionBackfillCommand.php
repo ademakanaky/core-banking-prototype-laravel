@@ -128,14 +128,16 @@ class EvmTransactionBackfillCommand extends Command
                         continue;
                     }
 
-                    if ($processor->processActivity(
+                    $created = $processor->processActivity(
                         $address,
                         $blockchainAddress,
                         $user->id,
                         $chain,
                         $activity,
                         $this->blockTimestamp($transfer),
-                    )) {
+                    );
+
+                    if ($created) {
                         $stored++;
                     }
                 }
@@ -154,8 +156,13 @@ class EvmTransactionBackfillCommand extends Command
      *
      * @return array<int, mixed>
      */
-    private function fetchTransfers(string $apiKey, string $chain, string $address, string $direction, int $limit): array
-    {
+    private function fetchTransfers(
+        string $apiKey,
+        string $chain,
+        string $address,
+        string $direction,
+        int $limit
+    ): array {
         $subdomain = self::NETWORK_SUBDOMAINS[$chain] ?? null;
         $contracts = $this->contractsFor($chain);
 
