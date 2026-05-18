@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Payment receipt for completed transactions.
@@ -78,9 +79,25 @@ class PaymentReceipt extends Model
         return $this->belongsTo(PaymentIntent::class);
     }
 
+    /**
+     * Public, no-auth URL of the hosted receipt page. Keyed on the unguessable
+     * `share_token` rather than `public_id` so the link can be shared freely.
+     */
     public function getShareUrl(): string
     {
-        return config('app.url') . '/receipt/' . $this->public_id;
+        return route('receipt.show', ['shareToken' => $this->share_token]);
+    }
+
+    /**
+     * Public URL of the generated receipt PDF, or null if one was not produced.
+     */
+    public function getPdfUrl(): ?string
+    {
+        if ($this->pdf_path === null || $this->pdf_path === '') {
+            return null;
+        }
+
+        return Storage::disk('public')->url($this->pdf_path);
     }
 
     /**
@@ -96,7 +113,7 @@ class PaymentReceipt extends Model
             'dateTime'     => $this->transaction_at->toIso8601String(),
             'networkFee'   => $this->network_fee,
             'sharePayload' => $this->getShareUrl(),
-            'pdfUrl'       => $this->pdf_path,
+            'pdfUrl'       => $this->getPdfUrl(),
         ];
     }
 }
