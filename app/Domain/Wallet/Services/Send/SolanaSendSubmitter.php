@@ -18,12 +18,17 @@ use App\Domain\Wallet\Models\WalletSendRecord;
  * `failed` on RPC rejection). Confirmation is observed asynchronously by
  * {@see \App\Domain\Wallet\Services\HeliusTransactionProcessor} via the
  * Helius webhook — this submitter is fire-and-forget for the user.
+ *
+ * For a sponsored send (record metadata `sponsored = true`) the platform
+ * fee-payer signature is produced server-side here and prepended to the
+ * device signature, since the fee payer is account index 0.
  */
 class SolanaSendSubmitter
 {
     public function __construct(
         private readonly HeliusRpcClient $rpc,
         private readonly SolanaTransferBuilder $builder,
+        private readonly SolanaSponsorSigner $sponsor,
     ) {
     }
 
@@ -50,10 +55,12 @@ class SolanaSendSubmitter
             );
         }
 
-        $signatureBytes = $this->decodeSignature($signatureBase64);
+        $deviceSignature = $this->decodeSignature($signatureBase64);
         $messageBytes = $this->decodeStoredMessage($record);
 
-        $wireTransaction = $this->builder->serializeSignedTransaction($messageBytes, $signatureBytes);
+        $orderedSignatures = $this->buildOrderedSignatures($record, $messageBytes, $deviceSignature);
+
+        $wireTransaction = $this->builder->serializeWithSignatures($messageBytes, $orderedSignatures);
         $base64Tx = base64_encode($wireTransaction);
 
         try {
@@ -74,6 +81,39 @@ class SolanaSendSubmitter
         $record->save();
 
         return $record;
+    }
+
+    /**
+     * Assemble the signature list in account-key order.
+     *
+     * Solana verifies signature[i] against account-key[i]. For a sponsored
+     * send the fee payer is account index 0, so the sponsor signature comes
+     * first, followed by the device (sender) signature. A legacy send carries
+     * only the device signature.
+     *
+     * @return array<int, string>
+     */
+    private function buildOrderedSignatures(
+        WalletSendRecord $record,
+        string $messageBytes,
+        string $deviceSignature,
+    ): array {
+        $metadata = $record->metadata ?? [];
+        $sponsored = (bool) ($metadata['sponsored'] ?? false);
+
+        if (! $sponsored) {
+            return [$deviceSignature];
+        }
+
+        if (! $this->sponsor->isEnabled()) {
+            throw new InvalidSendStateException(
+                'wallet_send_record was prepared as a sponsored send but the Solana '
+                . 'sponsor key is no longer configured; cannot produce the fee-payer signature.',
+            );
+        }
+
+        // Account order: [fee payer (sponsor), sender] — sponsor signature first.
+        return [$this->sponsor->sign($messageBytes), $deviceSignature];
     }
 
     private function decodeSignature(string $signatureBase64): string

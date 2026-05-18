@@ -44,6 +44,7 @@ class SolanaSendPreparer
     public function __construct(
         private readonly HeliusRpcClient $rpc,
         private readonly SolanaTransferBuilder $builder,
+        private readonly SolanaSponsorSigner $sponsor,
     ) {
     }
 
@@ -106,6 +107,13 @@ class SolanaSendPreparer
         $recentBlockhash = $blockhashInfo['blockhash'];
         $lastValidBlockHeight = $blockhashInfo['lastValidBlockHeight'];
 
+        // When a sponsor key is configured the platform account pays the
+        // transaction fee — a non-custodial wallet holds SPL tokens but no SOL,
+        // so an un-sponsored send would fail at execution. The device still
+        // signs the same opaque message bytes as the transfer authority, so the
+        // mobile contract is unchanged; the sponsor signature is added at submit.
+        $feePayer = $this->sponsor->isEnabled() ? $this->sponsor->publicKeyBase58() : null;
+
         $built = $this->builder->buildUnsignedTransferMessage(
             $senderAddressBase58,
             $recipientAddressBase58,
@@ -113,6 +121,7 @@ class SolanaSendPreparer
             $atomicAmount,
             $recentBlockhash,
             false, // ATA detection deferred; v1 assumes recipient ATA exists for stablecoins
+            $feePayer,
         );
 
         $messageBytes = $built['message'];
@@ -136,6 +145,10 @@ class SolanaSendPreparer
                 'mint'                    => $mint,
                 'atomic_amount'           => (string) $atomicAmount,
                 'recipient_ata'           => $built['recipientAta'],
+                // Sponsored sends require the platform fee-payer signature to
+                // be added at submit time; the submitter keys off this flag.
+                'sponsored' => $feePayer !== null,
+                'fee_payer' => $feePayer,
             ],
         ]);
 

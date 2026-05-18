@@ -321,6 +321,19 @@ Schedule::command('solana:reconcile-helius --auto-sync')
         Log::error('Solana ↔ Helius reconciliation reported drift or failed');
     });
 
+// Hourly: alert when the Solana fee-payer (sponsor) account runs low on SOL.
+// An empty sponsor account makes every sponsored send fail again — surface it
+// loudly while there is still runway to top the account up. No-op when the
+// sponsor key is unconfigured.
+Schedule::command('solana:check-sponsor-balance')
+    ->hourly()
+    ->description('Alert when the Solana fee-payer (sponsor) account SOL balance is low')
+    ->appendOutputTo(storage_path('logs/solana-sponsor-balance.log'))
+    ->withoutOverlapping()
+    ->onFailure(function () {
+        Log::critical('Solana sponsor account balance is low or unreachable — top it up');
+    });
+
 // Plan B Slice 5 — daily purge of 24h-old pending_payment Checkout sessions.
 // Verifies session status with Stripe; transitions to expired (no payment)
 // or paid (delayed webhook). Cap defaults to 1000 rows/run.

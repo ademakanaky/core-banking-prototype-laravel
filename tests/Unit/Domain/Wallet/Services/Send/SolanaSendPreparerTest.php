@@ -9,6 +9,7 @@ use App\Domain\Wallet\Helpers\Crypto\Base58;
 use App\Domain\Wallet\Models\WalletSendRecord;
 use App\Domain\Wallet\Services\Send\HeliusRpcClient;
 use App\Domain\Wallet\Services\Send\SolanaSendPreparer;
+use App\Domain\Wallet\Services\Send\SolanaSponsorSigner;
 use App\Domain\Wallet\Services\Send\SolanaTransferBuilder;
 use App\Models\User;
 use Illuminate\Support\Facades\Schema;
@@ -77,7 +78,7 @@ it('builds an unsigned message and persists a pending record on the happy path',
         ->once()
         ->andReturn(['blockhash' => $blockhash, 'lastValidBlockHeight' => 12345]);
 
-    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder());
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
 
     $result = $preparer->prepare(
         $user,
@@ -128,7 +129,7 @@ it('returns the existing record when the same idempotency key is reused with the
         ->once()
         ->andReturn(['blockhash' => $blockhash, 'lastValidBlockHeight' => 999]);
 
-    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder());
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
 
     $first = $preparer->prepare($user, $sender, $recipient, 'USDC', '2.5', 'idem-key-1', null);
     $second = $preparer->prepare($user, $sender, $recipient, 'USDC', '2.5', 'idem-key-1', null);
@@ -151,7 +152,7 @@ it('throws IdempotencyConflictException when key is reused with a different reci
         ->once()
         ->andReturn(['blockhash' => $blockhash, 'lastValidBlockHeight' => 1]);
 
-    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder());
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
 
     $preparer->prepare($user, $sender, $recipientA, 'USDC', '1.0', 'dupe-key', null);
 
@@ -169,7 +170,7 @@ it('throws IdempotencyConflictException when key is reused with a different amou
     $rpc->shouldReceive('getLatestBlockhash')->once()
         ->andReturn(['blockhash' => $blockhash, 'lastValidBlockHeight' => 1]);
 
-    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder());
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
 
     $preparer->prepare($user, $sender, $recipient, 'USDC', '1.0', 'dupe-amount', null);
     $preparer->prepare($user, $sender, $recipient, 'USDC', '2.0', 'dupe-amount', null);
@@ -185,7 +186,7 @@ it('throws InvalidAssetException for an unsupported asset symbol', function (): 
     // Should never be called — we fail before fetching the blockhash.
     $rpc->shouldNotReceive('getLatestBlockhash');
 
-    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder());
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
 
     $preparer->prepare($user, $sender, $recipient, 'DOGE', '1.0', null, null);
 })->throws(InvalidAssetException::class);
@@ -198,7 +199,7 @@ it('throws InvalidAddressException for a bad recipient address', function (): vo
     $rpc = Mockery::mock(HeliusRpcClient::class);
     $rpc->shouldNotReceive('getLatestBlockhash');
 
-    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder());
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
 
     // Not 32 bytes after base58 decode
     $preparer->prepare($user, $sender, 'shortbad', 'USDC', '1.0', null, null);
@@ -212,7 +213,7 @@ it('throws InvalidAddressException for a bad sender address', function (): void 
     $rpc = Mockery::mock(HeliusRpcClient::class);
     $rpc->shouldNotReceive('getLatestBlockhash');
 
-    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder());
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
 
     $preparer->prepare($user, '', $recipient, 'USDC', '1.0', null, null);
 })->throws(InvalidAddressException::class);
@@ -226,7 +227,54 @@ it('throws InvalidAssetException when the amount is non-positive or malformed', 
     $rpc = Mockery::mock(HeliusRpcClient::class);
     $rpc->shouldNotReceive('getLatestBlockhash');
 
-    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder());
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
 
     $preparer->prepare($user, $sender, $recipient, 'USDC', 'not-a-number', null, null);
 })->throws(InvalidAssetException::class);
+
+it('marks the record un-sponsored when no sponsor key is configured', function (): void {
+    config(['wallet.solana.sponsor.secret_key' => '']);
+
+    $user = User::factory()->create();
+    $sender = makeSendPubkey('unsponsored-sender');
+    $recipient = makeSendPubkey('unsponsored-recipient');
+
+    /** @var HeliusRpcClient&MockInterface $rpc */
+    $rpc = Mockery::mock(HeliusRpcClient::class);
+    $rpc->shouldReceive('getLatestBlockhash')->once()
+        ->andReturn(['blockhash' => Base58::encode(random_bytes(32)), 'lastValidBlockHeight' => 1]);
+
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
+    $result = $preparer->prepare($user, $sender, $recipient, 'USDC', '1.0', null, null);
+
+    $metadata = $result['record']->metadata ?? [];
+    expect($metadata['sponsored'])->toBeFalse()
+        ->and($metadata['fee_payer'])->toBeNull();
+});
+
+it('builds a sponsored two-signer message when a sponsor key is configured', function (): void {
+    $kp = sodium_crypto_sign_keypair();
+    $sponsorPublic = Base58::encode(sodium_crypto_sign_publickey($kp));
+    config(['wallet.solana.sponsor.secret_key' => Base58::encode(sodium_crypto_sign_secretkey($kp))]);
+
+    $user = User::factory()->create();
+    $sender = makeSendPubkey('sponsored-prep-sender');
+    $recipient = makeSendPubkey('sponsored-prep-recipient');
+
+    /** @var HeliusRpcClient&MockInterface $rpc */
+    $rpc = Mockery::mock(HeliusRpcClient::class);
+    $rpc->shouldReceive('getLatestBlockhash')->once()
+        ->andReturn(['blockhash' => Base58::encode(random_bytes(32)), 'lastValidBlockHeight' => 7]);
+
+    $preparer = new SolanaSendPreparer($rpc, new SolanaTransferBuilder(), new SolanaSponsorSigner());
+    $result = $preparer->prepare($user, $sender, $recipient, 'USDC', '1.0', null, null);
+
+    $metadata = $result['record']->metadata ?? [];
+    expect($metadata['sponsored'])->toBeTrue()
+        ->and($metadata['fee_payer'])->toBe($sponsorPublic);
+
+    // The persisted message must be a two-signer message with the sponsor at index 0.
+    $message = (string) base64_decode((string) $metadata['message_bytes_base64'], true);
+    expect(ord($message[0]))->toBe(2)
+        ->and(substr($message, 4, 32))->toBe(Base58::decode($sponsorPublic));
+});

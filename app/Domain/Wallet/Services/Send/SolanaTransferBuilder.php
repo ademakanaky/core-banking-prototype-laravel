@@ -52,10 +52,18 @@ class SolanaTransferBuilder
      *
      * The returned `message` is the unsigned legacy-format Solana message — the
      * exact bytes the client must ed25519-sign. To get the wire-format
-     * transaction Helius accepts, pass the signature back through
-     * {@see self::serializeSignedTransaction()}.
+     * transaction Helius accepts, pass the signature(s) back through
+     * {@see self::serializeWithSignatures()}.
      *
-     * @return array{message: string, recipientAta: string}
+     * When `$feePayerPubkeyBase58` is supplied and differs from the sender, the
+     * fee payer becomes account index 0 (signer + writable) and the sender
+     * drops to a signer-readonly transfer authority — the transaction then
+     * requires TWO signatures in account order: [fee payer, sender]. This is
+     * the sponsored-send path: a non-custodial wallet holds SPL tokens but no
+     * SOL, so the platform sponsor account pays the fee. When the fee payer is
+     * null (or equal to the sender) the legacy single-signer message is built.
+     *
+     * @return array{message: string, recipientAta: string, numRequiredSignatures: int, feePayer: string}
      */
     public function buildSplTransfer(
         string $senderPubkeyBase58,
@@ -64,6 +72,7 @@ class SolanaTransferBuilder
         int $amountAtomic,
         string $recentBlockhashBase58,
         bool $createRecipientAta,
+        ?string $feePayerPubkeyBase58 = null,
     ): array {
         if ($amountAtomic <= 0) {
             throw new InvalidArgumentException('amountAtomic must be positive');
@@ -73,6 +82,12 @@ class SolanaTransferBuilder
         $recipientRaw = $this->decodePubkey($recipientPubkeyBase58, 'recipient');
         $mintRaw = $this->decodePubkey($mintBase58, 'mint');
         $blockhashRaw = $this->decodePubkey($recentBlockhashBase58, 'blockhash');
+
+        $feePayerRaw = ($feePayerPubkeyBase58 !== null && $feePayerPubkeyBase58 !== '')
+            ? $this->decodePubkey($feePayerPubkeyBase58, 'feePayer')
+            : null;
+        // Sponsored only when a distinct fee payer is supplied.
+        $sponsored = $feePayerRaw !== null && $feePayerRaw !== $senderRaw;
 
         $tokenProgramRaw = Base58::decode(self::TOKEN_PROGRAM_ID);
         $assocProgramRaw = Base58::decode(self::ASSOCIATED_TOKEN_PROGRAM_ID);
@@ -84,9 +99,17 @@ class SolanaTransferBuilder
         $recipientAtaRaw = $this->deriveAssociatedTokenAccount($recipientRaw, $mintRaw, $tokenProgramRaw, $assocProgramRaw);
 
         // Account ordering: signer-writable, signer-readonly, nonsigner-writable, nonsigner-readonly.
-        // For a single-signer transaction the only signer is the sender (writable, since fee is debited).
-        $signerWritable = [$senderRaw];
-        $signerReadonly = [];
+        // Legacy single-signer: the sender is the lone signer (writable, since the
+        // fee is debited from it). Sponsored: the fee payer is account index 0
+        // (signer + writable) and the sender becomes a signer-readonly transfer
+        // authority — the SPL Transfer authority does not need to be writable.
+        if ($sponsored) {
+            $signerWritable = [$feePayerRaw];
+            $signerReadonly = [$senderRaw];
+        } else {
+            $signerWritable = [$senderRaw];
+            $signerReadonly = [];
+        }
         $nonSignerWritable = [$senderAtaRaw, $recipientAtaRaw];
 
         // Readonly non-signers — collect uniquely. Recipient pubkey is only needed when we create
@@ -128,8 +151,11 @@ class SolanaTransferBuilder
             // CreateAssociatedTokenAccount accounts:
             //   [funder (signer, writable), ata (writable), owner (readonly),
             //    mint (readonly), system_program, token_program, rent_sysvar]
+            // The funder must be signer + writable; when sponsored the sender
+            // is signer-readonly, so the fee payer funds the rent instead.
+            $funderRaw = $sponsored ? $feePayerRaw : $senderRaw;
             $createAtaAccounts = [
-                $accountIndex[$senderRaw],
+                $accountIndex[$funderRaw],
                 $accountIndex[$recipientAtaRaw],
                 $accountIndex[$recipientRaw],
                 $accountIndex[$mintRaw],
@@ -172,8 +198,10 @@ class SolanaTransferBuilder
         }
 
         return [
-            'message'      => $message,
-            'recipientAta' => Base58::encode($recipientAtaRaw),
+            'message'               => $message,
+            'recipientAta'          => Base58::encode($recipientAtaRaw),
+            'numRequiredSignatures' => $numRequiredSignatures,
+            'feePayer'              => Base58::encode($sponsored ? $feePayerRaw : $senderRaw),
         ];
     }
 
@@ -182,7 +210,7 @@ class SolanaTransferBuilder
      * caller's vocabulary. Returns the raw legacy-format message bytes that
      * Privy (or any external signer) will ed25519-sign.
      *
-     * @return array{message: string, recipientAta: string}
+     * @return array{message: string, recipientAta: string, numRequiredSignatures: int, feePayer: string}
      */
     public function buildUnsignedTransferMessage(
         string $senderPubkeyBase58,
@@ -191,6 +219,7 @@ class SolanaTransferBuilder
         int $amountAtomic,
         string $recentBlockhashBase58,
         bool $createRecipientAta,
+        ?string $feePayerPubkeyBase58 = null,
     ): array {
         return $this->buildSplTransfer(
             $senderPubkeyBase58,
@@ -199,6 +228,7 @@ class SolanaTransferBuilder
             $amountAtomic,
             $recentBlockhashBase58,
             $createRecipientAta,
+            $feePayerPubkeyBase58,
         );
     }
 
@@ -208,18 +238,40 @@ class SolanaTransferBuilder
      * signatures || message). The result is the binary blob to base64-encode
      * and submit via {@see HeliusRpcClient::sendTransaction()}.
      *
-     * Single-signer transactions only — for our SPL transfer flow the sender
-     * is the lone signer.
+     * Single-signer convenience wrapper — see {@see self::serializeWithSignatures()}
+     * for the sponsored (two-signer) path.
      */
     public function serializeSignedTransaction(string $messageBytes, string $signatureBytes): string
     {
-        if (strlen($signatureBytes) !== 64) {
-            throw new InvalidArgumentException('Solana signature must be exactly 64 bytes');
+        return $this->serializeWithSignatures($messageBytes, [$signatureBytes]);
+    }
+
+    /**
+     * Wrap unsigned message bytes + an ordered list of 64-byte signatures into
+     * the wire-format Solana legacy transaction.
+     *
+     * The signatures MUST be ordered to match the message's signer accounts:
+     * signature[i] verifies against account-key[i]. For a sponsored send that
+     * is [fee-payer signature, sender signature]; for a legacy send it is just
+     * [sender signature].
+     *
+     * @param  array<int, string> $signatures Ordered 64-byte ed25519 signatures
+     */
+    public function serializeWithSignatures(string $messageBytes, array $signatures): string
+    {
+        if ($signatures === []) {
+            throw new InvalidArgumentException('At least one signature is required');
         }
 
-        // Compact-array of signatures: [count][sig1]...
-        // For a single-signer tx this is shortvec(1) + 64-byte signature.
-        return $this->encodeShortVec(1) . $signatureBytes . $messageBytes;
+        $out = $this->encodeShortVec(count($signatures));
+        foreach ($signatures as $signatureBytes) {
+            if (strlen($signatureBytes) !== 64) {
+                throw new InvalidArgumentException('Solana signature must be exactly 64 bytes');
+            }
+            $out .= $signatureBytes;
+        }
+
+        return $out . $messageBytes;
     }
 
     /**

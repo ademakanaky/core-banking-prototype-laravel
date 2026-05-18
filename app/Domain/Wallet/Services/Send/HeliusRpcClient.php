@@ -154,6 +154,24 @@ class HeliusRpcClient
     }
 
     /**
+     * Fetch an account's SOL balance in lamports (1 SOL = 1_000_000_000).
+     * Returns 0 for an account that does not exist on-chain.
+     *
+     * @throws SolanaRpcException
+     */
+    public function getBalance(string $base58Address): int
+    {
+        $result = $this->call('getBalance', [
+            $base58Address,
+            ['commitment' => $this->commitment()],
+        ]);
+
+        $value = is_array($result) && isset($result['value']) ? $result['value'] : 0;
+
+        return (int) $value;
+    }
+
+    /**
      * Execute a JSON-RPC call. Throws on RPC error envelope or HTTP failure.
      *
      * @param  array<int, mixed> $params
