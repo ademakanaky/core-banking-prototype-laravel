@@ -85,6 +85,27 @@ it('signs up a new user when verifyCode resolves a Privy DID with no existing re
         ->and($user->privy_linked_at)->not->toBeNull();
 });
 
+it('provisions a personal team for a brand-new Privy web signup', function (): void {
+    mock_privy_otp_client(function (MockInterface $m): void {
+        $m->shouldReceive('loginWithCode')
+            ->once()
+            ->with('teamless@example.com', '123456')
+            ->andReturn(['id' => 'did:privy:needsteam', 'email' => 'teamless@example.com']);
+    });
+
+    $this->post(route('login.privy.verify'), [
+        'email' => 'teamless@example.com',
+        'code'  => '123456',
+    ])->assertRedirect();
+
+    // A teamless user 500s on the first team-aware Blade view — the dashboard
+    // navigation dereferences Auth::user()->currentTeam->name.
+    $user = User::where('privy_user_id', 'did:privy:needsteam')->firstOrFail();
+    expect($user->personalTeam())->not->toBeNull()
+        ->and($user->currentTeam)->not->toBeNull()
+        ->and($user->currentTeam->personal_team)->toBeTrue();
+});
+
 it('signs in an existing Privy user without creating a duplicate row', function (): void {
     $existing = User::factory()->create([
         'email'           => 'returning@example.com',

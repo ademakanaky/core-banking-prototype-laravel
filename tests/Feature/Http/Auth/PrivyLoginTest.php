@@ -142,6 +142,22 @@ it('creates a new user with the linked email from the JWT', function (): void {
         ->and($user->tokens()->count())->toBe(1);
 });
 
+it('provisions a personal team for a brand-new Privy mobile signup', function (): void {
+    $token = privy_login_jwt([
+        'sub'             => 'did:privy:mobileteam',
+        'linked_accounts' => [['type' => 'email', 'address' => 'mobileteam@example.com']],
+    ], $this);
+
+    $this->postJson('/api/v1/auth/privy-login', ['privy_token' => $token])->assertOk();
+
+    // Cross-client account merging means this mobile-created user can later
+    // sign in on the web — a teamless user 500s on every team-aware view.
+    $user = User::where('privy_user_id', 'did:privy:mobileteam')->firstOrFail();
+    expect($user->personalTeam())->not->toBeNull()
+        ->and($user->currentTeam)->not->toBeNull()
+        ->and($user->currentTeam->personal_team)->toBeTrue();
+});
+
 it('falls back to the Privy users API when the JWT has no linked email', function (): void {
     $this->usersApiResponses['https://auth.privy.io/api/v1/users/did%3Aprivy%3Anolinkedclaim'] =
         new PsrResponse(200, [], (string) json_encode([

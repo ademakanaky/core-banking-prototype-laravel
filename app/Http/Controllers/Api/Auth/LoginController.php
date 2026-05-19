@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Auth;
 use App\Domain\Auth\Exceptions\PrivyJwtException;
 use App\Domain\Auth\Services\PrivyJwtVerifier;
 use App\Domain\Mobile\Services\BiometricJWTService;
+use App\Http\Controllers\Concerns\ProvisionsPersonalTeam;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\IpBlockingService;
@@ -23,6 +24,7 @@ use Throwable;
 class LoginController extends Controller
 {
     use HasApiScopes;
+    use ProvisionsPersonalTeam;
 
     public function __construct(
         private readonly IpBlockingService $ipBlockingService,
@@ -283,6 +285,11 @@ class LoginController extends Controller
                 'privy_linked_at'   => now(),
                 'timezone'          => $timezone,
             ]);
+
+            // Mirror CreateNewUser: a teamless user 500s on the first
+            // team-aware web Blade view (cross-client account merging means a
+            // mobile-created user can later sign in on the web).
+            $this->createPersonalTeam($user);
         } elseif ($timezone !== null && $user->timezone !== $timezone) {
             // Returning user with a new device tz — update silently. The user
             // explicitly setting tz from the profile screen takes precedence

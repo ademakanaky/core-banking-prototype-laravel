@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Web;
 
 use App\Domain\Auth\Exceptions\PrivyEmailOtpException;
 use App\Domain\Auth\Services\PrivyEmailOtpClient;
+use App\Http\Controllers\Concerns\ProvisionsPersonalTeam;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Cache\RateLimiter;
@@ -30,6 +31,8 @@ use Illuminate\Support\Str;
  */
 final class PrivyWebAuthController extends Controller
 {
+    use ProvisionsPersonalTeam;
+
     public function __construct(
         private readonly PrivyEmailOtpClient $privy,
         private readonly RateLimiter $rateLimiter,
@@ -144,7 +147,7 @@ final class PrivyWebAuthController extends Controller
             return null;
         }
 
-        return User::create([
+        $user = User::create([
             'name'              => 'New User',
             'email'             => $email,
             'password'          => Str::random(64),
@@ -152,5 +155,11 @@ final class PrivyWebAuthController extends Controller
             'privy_user_id'     => $privyUserId,
             'privy_linked_at'   => now(),
         ]);
+
+        // Without a personal team the dashboard (and every team-aware Blade
+        // view) 500s on a null currentTeam. Mirror CreateNewUser.
+        $this->createPersonalTeam($user);
+
+        return $user;
     }
 }
