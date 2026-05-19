@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Auth;
 use App\Domain\Auth\Exceptions\PrivyJwtException;
 use App\Domain\Auth\Services\PrivyJwtVerifier;
 use App\Domain\Mobile\Services\BiometricJWTService;
+use App\Http\Controllers\Concerns\ProvisionsPersonalTeam;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\IpBlockingService;
@@ -23,6 +24,7 @@ use Throwable;
 class LoginController extends Controller
 {
     use HasApiScopes;
+    use ProvisionsPersonalTeam;
 
     public function __construct(
         private readonly IpBlockingService $ipBlockingService,
@@ -289,6 +291,12 @@ class LoginController extends Controller
             // until they sign in from a device with a different tz.
             $user->forceFill(['timezone' => $timezone])->save();
         }
+
+        // Cross-client account merging means a mobile-created user can later
+        // sign in on the web, where every team-aware Blade view dereferences
+        // currentTeam. Provision on every login (not just signup) so users
+        // created before team provisioning existed are healed too.
+        $this->ensurePersonalTeam($user);
 
         $token = $user->createToken('privy', ['read', 'write', 'delete'])->plainTextToken;
 

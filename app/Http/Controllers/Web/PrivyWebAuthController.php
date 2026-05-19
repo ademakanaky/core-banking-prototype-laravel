@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Web;
 
 use App\Domain\Auth\Exceptions\PrivyEmailOtpException;
 use App\Domain\Auth\Services\PrivyEmailOtpClient;
+use App\Http\Controllers\Concerns\ProvisionsPersonalTeam;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Cache\RateLimiter;
@@ -30,6 +31,8 @@ use Illuminate\Support\Str;
  */
 final class PrivyWebAuthController extends Controller
 {
+    use ProvisionsPersonalTeam;
+
     public function __construct(
         private readonly PrivyEmailOtpClient $privy,
         private readonly RateLimiter $rateLimiter,
@@ -116,6 +119,12 @@ final class PrivyWebAuthController extends Controller
                 ])
                 ->with('error_code', 'EMAIL_ALREADY_EXISTS');
         }
+
+        // Every team-aware Blade view dereferences Auth::user()->currentTeam,
+        // so a teamless user 500s on the dashboard. Provision on every login
+        // (not just signup) — this also heals users left teamless by a
+        // pre-fix signup that 500'd after the User row was created.
+        $this->ensurePersonalTeam($user);
 
         $this->rateLimiter->clear($throttleKey);
 

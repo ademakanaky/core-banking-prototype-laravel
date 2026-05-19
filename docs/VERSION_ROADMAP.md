@@ -3272,6 +3272,22 @@ Findings #1-2 fixed in v7.1.1, findings #3-15 fixed in this release:
 
 ---
 
+## Version 7.14.0 — Wallet Transaction Mirror & Admin Visibility (May 2026)
+
+**Theme**: Close the wallet transaction-history gaps surfaced by a comprehensive architecture review — mirror inbound EVM deposits the way Solana already is, give support a per-user wallet view in the admin panel, make the receipt endpoint serve a real page + PDF, and stop address-poisoning dust from spamming the activity feed.
+
+### Delivered Features
+- EVM inbound transaction mirror (#1078). Inbound USDC/USDT deposits on Polygon/Base/Arbitrum/Ethereum were discarded — `ProcessAlchemyWebhookJob` fired a balance broadcast + push, then threw the transaction away, so the deposit never appeared in `GET /api/v1/wallet/transactions` (balance moved, no entry). Solana mirrors every transfer via `HeliusTransactionProcessor`; EVM only tracked outbound sends. The new `EvmTransactionProcessor` persists each transfer to `blockchain_address_transactions` (audit row) and `activity_feed_items` (mobile read model), `firstOrCreate` on the `(tx_hash, chain)` unique index. Amounts resolve from the integer `rawContract.rawValue` to avoid float-precision loss. Outbound sends already owning a feed item via `WalletSendRecordObserver` keep the audit row but skip the duplicate. New `php artisan evm:backfill-transactions` seeds pre-mirror history via the Alchemy `getAssetTransfers` API — the EVM counterpart of `solana:backfill-transactions`.
+- Per-user wallet visibility in the admin panel (#1079). Support had no screen for a customer's crypto activity: `/admin/accounts` is the fiat ledger, and no resource surfaced `BlockchainTransaction` / `BlockchainAddress` / `WalletSendRecord`. Three read-only relation managers were added to `UserResource` — Wallet Addresses, Blockchain Transactions (cross-chain, unfiltered — including dust hidden from the customer feed), and Wallet Sends (full lifecycle with `error_code` / `error_message`). Backed by three new `User` relations: `blockchainAddresses` (HasMany), `blockchainTransactions` (HasManyThrough `BlockchainAddress`), `walletSendRecords` (HasMany). On-chain data stays plain-Eloquent — the chain is the system of record, the mirror is a rebuildable projection; event sourcing would duplicate a log we do not own.
+- Hosted receipt page + downloadable PDF (#1076). `POST /api/v1/transactions/{txId}/receipt` returned a `sharePayload` link to an unregistered `/receipt/{id}` route (every share link 404'd) and a null `pdfUrl` (no PDF was ever generated). New public `GET /receipt/{shareToken}` renders a branded `noindex` receipt page keyed on an unguessable 64-char token; `ReceiptService` renders the same Blade view to a PDF via dompdf on the public disk, so `pdfUrl` is now a real downloadable file.
+- Solana inbound dust filter (#1077). A wallet was hit by address-poisoning spam — six unsolicited 0.00001 SOL transfers, each one becoming an activity-feed entry and a push notification. Inbound native-SOL transfers below `WALLET_SOLANA_DUST_MIN_INBOUND_SOL` (default 0.001 SOL) are now recorded as a `BlockchainTransaction` for audit but kept out of `activity_feed_items`, and `ProcessHeliusWebhookJob` suppresses the push. Token transfers (USDC/USDT) are never filtered.
+
+### Environment
+- `WALLET_SOLANA_DUST_MIN_INBOUND_SOL` (default `0.001`) — inbound native-SOL dust threshold. Added to `.env.production.example` and `.env.zelta.example`.
+- The EVM backfill command reuses the existing `ALCHEMY_API_KEY`; no new variable.
+
+---
+
 ## Version 7.13.2 — Mobile Wallet Bug-Fix Patch (May 2026)
 
 **Theme**: Three small, independent server-side fixes surfaced by mobile Build #8 — Solana send unblocked, receipts work for non-intent transactions, privacy merkle-root gives a clean 4xx/5xx instead of a 500.
@@ -3379,5 +3395,5 @@ Embeddable JS widget that renders Zelta's 402 payment flow inside the partner's 
 
 ---
 
-*Document Version: 7.13.2*
-*Updated: May 15, 2026 (v7.13.2 mobile wallet bug-fix patch — Solana send + receipts + privacy gating)*
+*Document Version: 7.14.0*
+*Updated: May 18, 2026 (v7.14.0 wallet transaction mirror — EVM inbound deposits, admin wallet visibility, hosted receipts, Solana dust filter)*

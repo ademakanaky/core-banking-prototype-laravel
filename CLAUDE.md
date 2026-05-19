@@ -204,7 +204,10 @@ Plan B mobile-driven subscriptions (Apple App Store + Google Play). Entry point:
 - Solana constants: `SolanaTokens::KNOWN_MINTS` and `SolanaCacheKeys::balance()` in `app/Domain/Wallet/Constants/`
 - Solana webhook: always uses Helius (`HeliusWebhookSyncService`), Alchemy handles EVM only
 - Solana tx processor: `HeliusTransactionProcessor` handles all Solana transaction parsing
-- Webhook controllers: Helius handles Solana, Alchemy handles EVM — both send FCM push via `PushNotificationService`
+- EVM tx processor: `EvmTransactionProcessor` mirrors inbound EVM transfers to `blockchain_address_transactions` + `activity_feed_items` (counterpart of `HeliusTransactionProcessor`); `evm:backfill-transactions` seeds pre-mirror history via the Alchemy Transfers API
+- Webhook controllers: Helius handles Solana, Alchemy handles EVM — both send FCM push via `PushNotificationService` and mirror transactions via their respective processors
+- Inbound Solana dust: native-SOL transfers below `WALLET_SOLANA_DUST_MIN_INBOUND_SOL` (default 0.001 SOL) are recorded for audit but kept out of the activity feed + push (address-poisoning spam). Token transfers are never filtered
+- Admin wallet visibility: `UserResource` has read-only relation managers for wallet addresses, blockchain transactions, and wallet sends — support opens a user to see their crypto activity
 - Alchemy webhook signing keys: stored in `webhook_endpoints` table (managed by `AlchemyWebhookManager`), not env vars
 - Test tables: use `Tests\Traits\CreatesSolanaTestTables` trait for in-memory SQLite schema in webhook/wallet tests
 - Multi-connection tests: `tests/MultiConnection/` — runs against real MySQL with `database.force_real_tenant_connection=true` so models with `UsesTenantConnection` use a separate MySQL session. Required check on PRs. See `docs/superpowers/specs/2026-04-26-multi-connection-test-infrastructure-design.md`.
