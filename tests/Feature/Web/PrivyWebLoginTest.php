@@ -106,6 +106,25 @@ it('provisions a personal team for a brand-new Privy web signup', function (): v
         ->and($user->currentTeam->personal_team)->toBeTrue();
 });
 
+it('lands a brand-new Privy signup on a working dashboard without a 500', function (): void {
+    mock_privy_otp_client(function (MockInterface $m): void {
+        $m->shouldReceive('loginWithCode')
+            ->once()
+            ->with('dashok@example.com', '123456')
+            ->andReturn(['id' => 'did:privy:dashboardok', 'email' => 'dashok@example.com']);
+    });
+
+    // followingRedirects() chases the 302 into GET /dashboard — the exact
+    // request that 500'd in production when the new user had no team.
+    $response = $this->followingRedirects()->post(route('login.privy.verify'), [
+        'email' => 'dashok@example.com',
+        'code'  => '123456',
+    ]);
+
+    $response->assertOk();
+    $this->assertAuthenticated();
+});
+
 it('signs in an existing Privy user without creating a duplicate row', function (): void {
     $existing = User::factory()->create([
         'email'           => 'returning@example.com',
