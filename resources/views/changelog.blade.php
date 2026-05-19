@@ -5,7 +5,7 @@
 @section('seo')
     @include('partials.seo', [
         'title' => 'Changelog | ' . config('brand.name', 'Zelta'),
-        'description' => 'Release history for the Zelta core banking platform. Track every feature shipped, bug fixed, and improvement made — v7.0 through v7.14.0.',
+        'description' => 'Release history for the Zelta core banking platform. Track every feature shipped, bug fixed, and improvement made — v7.0 through v7.14.1.',
         'keywords' => 'changelog, release notes, updates, ' . config('brand.name', 'Zelta') . ', version history, core banking',
     ])
 
@@ -43,6 +43,17 @@
 
             @php
                 $releases = [
+                    [
+                        'version' => 'v7.14.1',
+                        'date' => 'May 19, 2026',
+                        'label' => 'Privy Login Hotfix — Personal Team Provisioning',
+                        'label_color' => 'slate',
+                        'badge_color' => 'bg-slate-100 text-slate-700 border-slate-200',
+                        'dot_color' => 'bg-slate-500',
+                        'items' => [
+                            'Fixed a 500 error when signing in with a new email. Signing in at <code>/login</code> with a previously-unused email cleared the email-OTP step, then returned a &ldquo;500 Server Error&rdquo; the instant the freshly-created account reached the dashboard. Privy email-OTP signups — both the web flow and the mobile <code>POST /api/v1/auth/privy-login</code> flow — created the user with a bare <code>User::create()</code> and skipped the Jetstream personal-team provisioning that password signups inherit from <code>CreateNewUser</code>. Team features are enabled, so every team-aware view dereferences <code>currentTeam</code> — a team-less user crashed rendering <code>navigation-menu.blade.php</code>. A new <code>ProvisionsPersonalTeam</code> trait provisions the personal team idempotently on every Privy login (not just signup), which also heals users left team-less by the earlier code path on their next sign-in. (#1088)',
+                        ],
+                    ],
                     [
                         'version' => 'v7.14.0',
                         'date' => 'May 18, 2026',
