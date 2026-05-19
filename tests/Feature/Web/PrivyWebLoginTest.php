@@ -126,6 +126,33 @@ it('lands a brand-new Privy signup on a working dashboard without a 500', functi
     $this->assertAuthenticated();
 });
 
+it('heals a returning Privy user that was left without a personal team', function (): void {
+    // A user created before team provisioning existed — or by a pre-fix web
+    // signup that 500'd *after* the User row was inserted. A retry lands on
+    // the returning-user branch and would 500 on the dashboard forever.
+    User::factory()->create([
+        'email'           => 'healme@example.com',
+        'privy_user_id'   => 'did:privy:healme',
+        'privy_linked_at' => now(),
+    ]);
+
+    mock_privy_otp_client(function (MockInterface $m): void {
+        $m->shouldReceive('loginWithCode')
+            ->once()
+            ->with('healme@example.com', '222222')
+            ->andReturn(['id' => 'did:privy:healme', 'email' => 'healme@example.com']);
+    });
+
+    $response = $this->followingRedirects()->post(route('login.privy.verify'), [
+        'email' => 'healme@example.com',
+        'code'  => '222222',
+    ]);
+
+    $response->assertOk();
+    $healed = User::where('privy_user_id', 'did:privy:healme')->firstOrFail();
+    expect($healed->personalTeam())->not->toBeNull();
+});
+
 it('signs in an existing Privy user without creating a duplicate row', function (): void {
     $existing = User::factory()->create([
         'email'           => 'returning@example.com',

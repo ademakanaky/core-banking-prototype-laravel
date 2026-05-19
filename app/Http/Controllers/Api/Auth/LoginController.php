@@ -285,17 +285,18 @@ class LoginController extends Controller
                 'privy_linked_at'   => now(),
                 'timezone'          => $timezone,
             ]);
-
-            // Mirror CreateNewUser: a teamless user 500s on the first
-            // team-aware web Blade view (cross-client account merging means a
-            // mobile-created user can later sign in on the web).
-            $this->createPersonalTeam($user);
         } elseif ($timezone !== null && $user->timezone !== $timezone) {
             // Returning user with a new device tz — update silently. The user
             // explicitly setting tz from the profile screen takes precedence
             // until they sign in from a device with a different tz.
             $user->forceFill(['timezone' => $timezone])->save();
         }
+
+        // Cross-client account merging means a mobile-created user can later
+        // sign in on the web, where every team-aware Blade view dereferences
+        // currentTeam. Provision on every login (not just signup) so users
+        // created before team provisioning existed are healed too.
+        $this->ensurePersonalTeam($user);
 
         $token = $user->createToken('privy', ['read', 'write', 'delete'])->plainTextToken;
 

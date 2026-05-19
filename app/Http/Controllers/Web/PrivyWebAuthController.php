@@ -120,6 +120,12 @@ final class PrivyWebAuthController extends Controller
                 ->with('error_code', 'EMAIL_ALREADY_EXISTS');
         }
 
+        // Every team-aware Blade view dereferences Auth::user()->currentTeam,
+        // so a teamless user 500s on the dashboard. Provision on every login
+        // (not just signup) — this also heals users left teamless by a
+        // pre-fix signup that 500'd after the User row was created.
+        $this->ensurePersonalTeam($user);
+
         $this->rateLimiter->clear($throttleKey);
 
         Auth::login($user, remember: true);
@@ -147,7 +153,7 @@ final class PrivyWebAuthController extends Controller
             return null;
         }
 
-        $user = User::create([
+        return User::create([
             'name'              => 'New User',
             'email'             => $email,
             'password'          => Str::random(64),
@@ -155,11 +161,5 @@ final class PrivyWebAuthController extends Controller
             'privy_user_id'     => $privyUserId,
             'privy_linked_at'   => now(),
         ]);
-
-        // Without a personal team the dashboard (and every team-aware Blade
-        // view) 500s on a null currentTeam. Mirror CreateNewUser.
-        $this->createPersonalTeam($user);
-
-        return $user;
     }
 }

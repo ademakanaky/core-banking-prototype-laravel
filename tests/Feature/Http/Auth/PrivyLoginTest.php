@@ -159,6 +159,28 @@ it('provisions a personal team for a brand-new Privy mobile signup', function ()
     expect($user->currentTeam)->not->toBeNull();
 });
 
+it('heals a returning Privy user that has no personal team', function (): void {
+    // Mobile users created before team provisioning existed are teamless;
+    // cross-client merging means they can later sign in on the web and 500.
+    User::factory()->create([
+        'email'           => 'mobileheal@example.com',
+        'privy_user_id'   => 'did:privy:mobileheal',
+        'privy_linked_at' => now(),
+    ]);
+
+    $token = privy_login_jwt([
+        'sub'             => 'did:privy:mobileheal',
+        'linked_accounts' => [['type' => 'email', 'address' => 'mobileheal@example.com']],
+    ], $this);
+
+    $this->postJson('/api/v1/auth/privy-login', ['privy_token' => $token])
+        ->assertOk()
+        ->assertJsonPath('data.is_new_user', false);
+
+    $user = User::where('privy_user_id', 'did:privy:mobileheal')->firstOrFail();
+    expect($user->personalTeam())->not->toBeNull();
+});
+
 it('falls back to the Privy users API when the JWT has no linked email', function (): void {
     $this->usersApiResponses['https://auth.privy.io/api/v1/users/did%3Aprivy%3Anolinkedclaim'] =
         new PsrResponse(200, [], (string) json_encode([
