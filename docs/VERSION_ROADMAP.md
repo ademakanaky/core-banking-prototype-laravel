@@ -3272,6 +3272,15 @@ Findings #1-2 fixed in v7.1.1, findings #3-15 fixed in this release:
 
 ---
 
+## Version 7.14.1 — Privy Login Hotfix (May 2026)
+
+**Theme**: A one-bug patch — new users could not sign in on the web.
+
+### Delivered Features
+- Privy personal-team provisioning (#1088). Signing in at `/login` with a previously-unused email passed the email-OTP step, then returned a 500 the moment the freshly-created account hit the dashboard. Privy email-OTP signups — web `PrivyWebAuthController` and mobile `POST /api/v1/auth/privy-login` — created the user with a bare `User::create()`, skipping the Jetstream personal-team creation that password signups inherit from `CreateNewUser::createTeam()`. Team features are enabled, so every team-aware Blade view dereferences `Auth::user()->currentTeam`; a team-less user threw `Attempt to read property "name" on null` in `navigation-menu.blade.php`. The new `App\Http\Controllers\Concerns\ProvisionsPersonalTeam` trait provisions the personal team via an idempotent `ensurePersonalTeam()` called on every Privy login — not just signup — so users left team-less by the earlier code path (mobile accounts, and web users whose pre-fix signup 500'd after the row was already inserted) are healed on their next sign-in. Returning-user reproduction tests were added for both transports.
+
+---
+
 ## Version 7.14.0 — Wallet Transaction Mirror & Admin Visibility (May 2026)
 
 **Theme**: Close the wallet transaction-history gaps surfaced by a comprehensive architecture review — mirror inbound EVM deposits the way Solana already is, give support a per-user wallet view in the admin panel, make the receipt endpoint serve a real page + PDF, and stop address-poisoning dust from spamming the activity feed.
@@ -3395,5 +3404,5 @@ Embeddable JS widget that renders Zelta's 402 payment flow inside the partner's 
 
 ---
 
-*Document Version: 7.14.0*
-*Updated: May 18, 2026 (v7.14.0 wallet transaction mirror — EVM inbound deposits, admin wallet visibility, hosted receipts, Solana dust filter)*
+*Document Version: 7.14.1*
+*Updated: May 19, 2026 (v7.14.1 Privy login hotfix — personal-team provisioning for email-OTP signups)*
