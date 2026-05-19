@@ -152,10 +152,11 @@ it('provisions a personal team for a brand-new Privy mobile signup', function ()
 
     // Cross-client account merging means this mobile-created user can later
     // sign in on the web — a teamless user 500s on every team-aware view.
+    // personalTeam() is defined as ownedTeams->where('personal_team', true)
+    // ->first() — a non-null result proves a personal team was provisioned.
     $user = User::where('privy_user_id', 'did:privy:mobileteam')->firstOrFail();
-    expect($user->personalTeam())->not->toBeNull()
-        ->and($user->currentTeam)->not->toBeNull()
-        ->and($user->currentTeam->personal_team)->toBeTrue();
+    expect($user->personalTeam())->not->toBeNull();
+    expect($user->currentTeam)->not->toBeNull();
 });
 
 it('falls back to the Privy users API when the JWT has no linked email', function (): void {

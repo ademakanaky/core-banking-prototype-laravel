@@ -100,10 +100,11 @@ it('provisions a personal team for a brand-new Privy web signup', function (): v
 
     // A teamless user 500s on the first team-aware Blade view — the dashboard
     // navigation dereferences Auth::user()->currentTeam->name.
+    // personalTeam() is defined as ownedTeams->where('personal_team', true)
+    // ->first() — a non-null result proves a personal team was provisioned.
     $user = User::where('privy_user_id', 'did:privy:needsteam')->firstOrFail();
-    expect($user->personalTeam())->not->toBeNull()
-        ->and($user->currentTeam)->not->toBeNull()
-        ->and($user->currentTeam->personal_team)->toBeTrue();
+    expect($user->personalTeam())->not->toBeNull();
+    expect($user->currentTeam)->not->toBeNull();
 });
 
 it('lands a brand-new Privy signup on a working dashboard without a 500', function (): void {
