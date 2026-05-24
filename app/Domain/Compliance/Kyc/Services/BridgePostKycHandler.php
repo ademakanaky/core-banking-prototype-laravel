@@ -62,6 +62,25 @@ final class BridgePostKycHandler
             data: ['bridge_customer_id' => $customer->bridge_customer_id],
         );
 
+        $this->tryProvisionVirtualAccount($customer);
+    }
+
+    /**
+     * Idempotent VA provisioning callable from outside the KYC webhook path.
+     *
+     * Used by BlockchainAddressBridgeObserver when a user registers a Polygon
+     * address AFTER KYC was already approved (common when KYC completes
+     * before mobile finishes wallet setup). Calling repeatedly is safe — the
+     * hasVirtualAccount short-circuit + Bridge Idempotency-Key keep it from
+     * creating duplicate VAs.
+     */
+    public function tryProvisionVirtualAccount(BridgeCustomer $customer): void
+    {
+        $user = User::find($customer->user_id);
+        if ($user === null) {
+            return;
+        }
+
         $this->provisionVirtualAccount($customer, $user);
     }
 
