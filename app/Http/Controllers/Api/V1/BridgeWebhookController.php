@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Compliance\Kyc\Models\BridgeCustomer;
 use App\Domain\Compliance\Kyc\Providers\BridgeKycProvider;
+use App\Domain\Compliance\Kyc\Services\BridgePostKycHandler;
 use App\Domain\Ramp\Providers\BridgeProvider;
 use App\Domain\Subscription\Models\ProcessedWebhookEvent;
 use App\Http\Controllers\Controller;
@@ -40,6 +41,7 @@ class BridgeWebhookController extends Controller
     public function __construct(
         private readonly BridgeProvider $rampProvider,
         private readonly BridgeKycProvider $kycProvider,
+        private readonly BridgePostKycHandler $postKycHandler,
     ) {
     }
 
@@ -138,7 +140,7 @@ class BridgeWebhookController extends Controller
             return;
         }
 
-        DB::transaction(function () use ($bridgeCustomerId, $normalized): void {
+        $customer = DB::transaction(function () use ($bridgeCustomerId, $normalized): ?BridgeCustomer {
             $customer = BridgeCustomer::where('bridge_customer_id', $bridgeCustomerId)
                 ->lockForUpdate()
                 ->first();
@@ -148,7 +150,7 @@ class BridgeWebhookController extends Controller
                     'bridge_customer_id' => $bridgeCustomerId,
                 ]);
 
-                return;
+                return null;
             }
 
             $newStatus = match ($normalized['status']) {
@@ -159,12 +161,27 @@ class BridgeWebhookController extends Controller
             };
 
             $customer->update(['kyc_status' => $newStatus]);
+
+            return $customer->fresh();
         });
 
-        // TODO: dispatch WS broadcast (private-user.{userId}) + push
-        // notification on bridge.kyc.completed / bridge.kyc.rejected per
-        // handover §4.3. Plumbing lands when the WS event registry +
-        // PushNotificationService bindings are wired in this domain.
+        if ($customer === null) {
+            return;
+        }
+
+        // Run post-KYC side effects (WS broadcast + push fallback +
+        // virtual-account auto-provisioning on approval) outside the
+        // transaction so a slow Bridge API call doesn't hold a row lock.
+        match ($normalized['status']) {
+            'approved' => $this->postKycHandler->handleApproved($customer),
+            'rejected' => $this->postKycHandler->handleRejected(
+                $customer,
+                isset($normalized['raw']['rejection_reason'])
+                    ? (string) $normalized['raw']['rejection_reason']
+                    : null,
+            ),
+            default => null,
+        };
     }
 
     /**
