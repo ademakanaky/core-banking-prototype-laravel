@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Domain\Ramp\Services\StripeBridgeService;
+use App\Domain\Ramp\Services\StripeCryptoOnrampService;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
@@ -23,7 +23,7 @@ it('fetches a Stripe onramp session via getSession()', function () {
         ], 200),
     ]);
 
-    $service = new StripeBridgeService();
+    $service = new StripeCryptoOnrampService();
     $result = $service->getSession('cos_test_abc123');
 
     expect($result)
@@ -39,7 +39,7 @@ it('throws RuntimeException when Stripe returns 404 for getSession()', function 
         ], 404),
     ]);
 
-    $service = new StripeBridgeService();
+    $service = new StripeCryptoOnrampService();
     $service->getSession('cos_missing');
 })->throws(RuntimeException::class);
 
@@ -48,7 +48,7 @@ it('throws RuntimeException when Stripe returns 404 for getSession()', function 
 // ──────────────────────────────────────────────────────────────────────────────
 
 it('accepts a valid Stripe-Signature header with a fresh timestamp', function () {
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
     $secret = 'whsec_test_fake';
     $body = '{"id":"evt_test","type":"crypto_onramp_session.updated"}';
     $timestamp = time();
@@ -61,7 +61,7 @@ it('accepts a valid Stripe-Signature header with a fresh timestamp', function ()
 });
 
 it('rejects a tampered body even with a valid-looking signature', function () {
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
     $secret = 'whsec_test_fake';
     $originalBody = '{"id":"evt_test","type":"crypto_onramp_session.updated"}';
     $tamperedBody = '{"id":"evt_test","type":"crypto_onramp_session.completed"}';
@@ -75,7 +75,7 @@ it('rejects a tampered body even with a valid-looking signature', function () {
 });
 
 it('rejects a timestamp older than the 300s replay window', function () {
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
     $secret = 'whsec_test_fake';
     $body = '{"id":"evt_test","type":"crypto_onramp_session.updated"}';
     $timestamp = time() - 600;  // 10 minutes ago
@@ -88,7 +88,7 @@ it('rejects a timestamp older than the 300s replay window', function () {
 });
 
 it('rejects a header missing the v1 signature element', function () {
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
     $validator = $provider->getWebhookValidator();
     $timestamp = time();
 
@@ -96,14 +96,14 @@ it('rejects a header missing the v1 signature element', function () {
 });
 
 it('rejects an empty signature header', function () {
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
     $validator = $provider->getWebhookValidator();
 
     expect($validator('{}', ''))->toBeFalse();
 });
 
 it('accepts any of multiple v1 signature entries', function () {
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
     $secret = 'whsec_test_fake';
     $body = '{"test":"multi"}';
     $timestamp = time();
@@ -120,8 +120,8 @@ it('accepts any of multiple v1 signature entries', function () {
 // ──────────────────────────────────────────────────────────────────────────────
 
 it('normalizes a Stripe session.updated event into the canonical shape', function () {
-    $fixtures = require base_path('tests/Fixtures/stripe_bridge_webhooks.php');
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $fixtures = require base_path('tests/Fixtures/stripe_crypto_onramp_webhooks.php');
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
 
     $result = $provider->normalizeWebhookPayload($fixtures['session_updated']);
 
@@ -134,8 +134,8 @@ it('normalizes a Stripe session.updated event into the canonical shape', functio
 });
 
 it('normalizes a Stripe session.completed event with destination_amount', function () {
-    $fixtures = require base_path('tests/Fixtures/stripe_bridge_webhooks.php');
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $fixtures = require base_path('tests/Fixtures/stripe_crypto_onramp_webhooks.php');
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
 
     $result = $provider->normalizeWebhookPayload($fixtures['session_completed']);
 
@@ -147,15 +147,15 @@ it('normalizes a Stripe session.completed event with destination_amount', functi
 });
 
 it('returns null for an unrelated Stripe event type', function () {
-    $fixtures = require base_path('tests/Fixtures/stripe_bridge_webhooks.php');
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $fixtures = require base_path('tests/Fixtures/stripe_crypto_onramp_webhooks.php');
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
 
     expect($provider->normalizeWebhookPayload($fixtures['unrelated_event']))->toBeNull();
 });
 
 it('returns null for a malformed event without a session id', function () {
-    $fixtures = require base_path('tests/Fixtures/stripe_bridge_webhooks.php');
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $fixtures = require base_path('tests/Fixtures/stripe_crypto_onramp_webhooks.php');
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
 
     expect($provider->normalizeWebhookPayload($fixtures['session_without_id']))->toBeNull();
 });
@@ -165,12 +165,12 @@ it('returns null for a malformed event without a session id', function () {
 // ──────────────────────────────────────────────────────────────────────────────
 
 it('returns the correct webhook signature header name', function () {
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
     expect($provider->getWebhookSignatureHeader())->toBe('Stripe-Signature');
 });
 
 it('returns supported currencies in the canonical keyed shape', function () {
-    $provider = app(App\Domain\Ramp\Providers\StripeBridgeProvider::class);
+    $provider = app(App\Domain\Ramp\Providers\StripeCryptoOnrampProvider::class);
     $supported = $provider->getSupportedCurrencies();
 
     expect($supported)
@@ -180,16 +180,16 @@ it('returns supported currencies in the canonical keyed shape', function () {
         ->and($supported['limits'])->toHaveKeys(['minAmount', 'maxAmount', 'dailyLimit']);
 });
 
-it('GET /api/v1/ramp/supported returns stripe_bridge capabilities via the interface', function () {
+it('GET /api/v1/ramp/supported returns stripe_crypto_onramp capabilities via the interface', function () {
     $user = App\Models\User::factory()->create(['kyc_status' => 'approved']);
     Laravel\Sanctum\Sanctum::actingAs($user, ['read', 'write', 'delete']);
 
-    config(['ramp.default_provider' => 'stripe_bridge']);
+    config(['ramp.default_provider' => 'stripe_crypto_onramp']);
 
     $response = $this->getJson('/api/v1/ramp/supported');
 
     $response->assertOk();
-    $response->assertJsonPath('data.provider', 'stripe_bridge');
+    $response->assertJsonPath('data.provider', 'stripe_crypto_onramp');
     $response->assertJsonPath('data.crypto_currencies', ['USDC']);
     expect($response->json('data.fiat_currencies'))->toContain('USD');
 });
@@ -202,7 +202,7 @@ it('POST /api/v1/ramp/session persists stripe_session_id and stripe_client_secre
     $user = App\Models\User::factory()->create(['kyc_status' => 'approved']);
     Laravel\Sanctum\Sanctum::actingAs($user, ['read', 'write', 'delete']);
 
-    config(['ramp.default_provider' => 'stripe_bridge']);
+    config(['ramp.default_provider' => 'stripe_crypto_onramp']);
 
     Http::fake([
         'api.stripe.com/v1/crypto/onramp_sessions' => Http::response([
@@ -221,12 +221,12 @@ it('POST /api/v1/ramp/session persists stripe_session_id and stripe_client_secre
     ]);
 
     $response->assertStatus(201);
-    $response->assertJsonPath('data.provider', 'stripe_bridge');
+    $response->assertJsonPath('data.provider', 'stripe_crypto_onramp');
 
     $session = App\Models\RampSession::where('user_id', $user->id)->first();
     expect($session)->not->toBeNull();
     assert($session !== null);
-    expect($session->provider)->toBe('stripe_bridge');
+    expect($session->provider)->toBe('stripe_crypto_onramp');
     expect($session->stripe_session_id)->toBe('cos_test_created');
     expect($session->stripe_client_secret)->toBe('cs_live_secret_fake');
 });
@@ -235,7 +235,7 @@ it('GET /api/v1/ramp/quotes returns a single-element array with canonical paymen
     $user = App\Models\User::factory()->create(['kyc_status' => 'approved']);
     Laravel\Sanctum\Sanctum::actingAs($user, ['read', 'write', 'delete']);
 
-    config(['ramp.default_provider' => 'stripe_bridge']);
+    config(['ramp.default_provider' => 'stripe_crypto_onramp']);
 
     Http::fake([
         'api.stripe.com/v1/crypto/onramp_sessions/quotes*' => Http::response([
@@ -248,7 +248,7 @@ it('GET /api/v1/ramp/quotes returns a single-element array with canonical paymen
     $response = $this->getJson('/api/v1/ramp/quotes?type=on&fiat=USD&amount=100&crypto=USDC');
 
     $response->assertOk();
-    $response->assertJsonPath('data.provider', 'stripe_bridge');
+    $response->assertJsonPath('data.provider', 'stripe_crypto_onramp');
     $quotes = $response->json('data.quotes');
     expect($quotes)->toHaveCount(1);
     expect($quotes[0]['payment_methods'])->toBe(['card', 'bank_transfer']);
@@ -258,7 +258,7 @@ it('rejects BTC on Stripe with a provider-named error message', function () {
     $user = App\Models\User::factory()->create(['kyc_status' => 'approved']);
     Laravel\Sanctum\Sanctum::actingAs($user, ['read', 'write', 'delete']);
 
-    config(['ramp.default_provider' => 'stripe_bridge']);
+    config(['ramp.default_provider' => 'stripe_crypto_onramp']);
 
     $response = $this->postJson('/api/v1/ramp/session', [
         'type'            => 'on',
@@ -270,19 +270,19 @@ it('rejects BTC on Stripe with a provider-named error message', function () {
 
     $response->assertStatus(422);
     $errorMessage = $response->json('error.message');
-    expect($errorMessage)->toContain('BTC')->toContain('stripe_bridge');
+    expect($errorMessage)->toContain('BTC')->toContain('stripe_crypto_onramp');
 });
 
 it('getSessionStatus does not clobber a webhook-set terminal status', function () {
     $user = App\Models\User::factory()->create(['kyc_status' => 'approved']);
     Laravel\Sanctum\Sanctum::actingAs($user, ['read', 'write', 'delete']);
 
-    config(['ramp.default_provider' => 'stripe_bridge']);
+    config(['ramp.default_provider' => 'stripe_crypto_onramp']);
 
     // Seed a session that a webhook has already marked as completed
     $session = App\Models\RampSession::create([
         'user_id'             => $user->id,
-        'provider'            => 'stripe_bridge',
+        'provider'            => 'stripe_crypto_onramp',
         'type'                => 'on',
         'fiat_currency'       => 'USD',
         'fiat_amount'         => 100.0,
@@ -316,7 +316,7 @@ it('non-custody: a successful completion webhook writes zero rows to wallet/ledg
     $user = App\Models\User::factory()->create();
     App\Models\RampSession::create([
         'user_id'             => $user->id,
-        'provider'            => 'stripe_bridge',
+        'provider'            => 'stripe_crypto_onramp',
         'type'                => 'on',
         'fiat_currency'       => 'USD',
         'fiat_amount'         => 100.0,
@@ -337,7 +337,7 @@ it('non-custody: a successful completion webhook writes zero rows to wallet/ledg
     ];
 
     // Send the webhook
-    $fixtures = require base_path('tests/Fixtures/stripe_bridge_webhooks.php');
+    $fixtures = require base_path('tests/Fixtures/stripe_crypto_onramp_webhooks.php');
     $fixtures['session_completed']['data']['object']['id'] = 'cos_test_noncustody';
     $body = (string) json_encode($fixtures['session_completed']);
     $secret = 'whsec_test_fake';
@@ -346,7 +346,7 @@ it('non-custody: a successful completion webhook writes zero rows to wallet/ledg
 
     $response = $this->call(
         'POST',
-        '/api/v1/ramp/webhook/stripe_bridge',
+        '/api/v1/ramp/webhook/stripe_crypto_onramp',
         [],
         [],
         [],

@@ -34,7 +34,25 @@ final class RevenueOutboxEvent extends Model
 
     public const SOURCE_GOOGLE_PLAY = 'google_play';
 
-    public const SOURCE_STRIPE_BRIDGE = 'stripe_bridge';
+    /**
+     * Stripe Crypto Onramp source type. Previously misnamed (see ADR-0005).
+     * Historical rows still carry the legacy string under SOURCE_STRIPE_BRIDGE_LEGACY.
+     */
+    public const SOURCE_STRIPE_CRYPTO_ONRAMP = 'stripe_crypto_onramp';
+
+    /**
+     * Legacy value previously written by the misnamed StripeBridgeProvider.
+     * Use SOURCE_STRIPE_CRYPTO_ONRAMP for new writes; this constant exists
+     * for matching against historical rows.
+     *
+     * @deprecated Use SOURCE_STRIPE_CRYPTO_ONRAMP.
+     */
+    public const SOURCE_STRIPE_BRIDGE_LEGACY = 'stripe_bridge';
+
+    /**
+     * @deprecated Misnamed; alias of SOURCE_STRIPE_BRIDGE_LEGACY for backwards compatibility.
+     */
+    public const SOURCE_STRIPE_BRIDGE = self::SOURCE_STRIPE_BRIDGE_LEGACY;
 
     public const SOURCE_ONDATO = 'ondato';
 

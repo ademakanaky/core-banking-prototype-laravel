@@ -9,14 +9,16 @@ use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
- * Stripe Bridge (Crypto Onramp) API client.
+ * Stripe Crypto Onramp API client.
  *
- * Wraps Stripe's crypto onramp endpoints for creating fiat-to-crypto
- * and crypto-to-fiat sessions. Uses HTTP facade (no SDK required).
+ * Wraps Stripe's crypto onramp endpoints for creating fiat-to-crypto and
+ * crypto-to-fiat sessions. Previously misnamed StripeBridgeService — that
+ * label conflated this with Bridge.xyz (a different Stripe product). See
+ * docs/adr/0005-bridge-xyz-over-stripe-crypto-onramp.md.
  *
  * @see https://docs.stripe.com/crypto/onramp
  */
-class StripeBridgeService
+class StripeCryptoOnrampService
 {
     private readonly string $apiKey;
 

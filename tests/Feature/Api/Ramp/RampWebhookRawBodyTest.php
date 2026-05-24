@@ -10,7 +10,7 @@ uses(RefreshDatabase::class);
 
 beforeEach(function () {
     config([
-        'ramp.default_provider'                 => 'stripe_bridge',
+        'ramp.default_provider'                 => 'stripe_crypto_onramp',
         'services.stripe.secret'                => 'sk_test_fake_key',
         'services.stripe.bridge_webhook_secret' => 'whsec_test_fake',
     ]);
@@ -34,7 +34,7 @@ it('returns 404 for an unknown provider name', function () {
 it('returns 400 when the Stripe signature is invalid', function () {
     $response = $this->call(
         'POST',
-        '/api/v1/ramp/webhook/stripe_bridge',
+        '/api/v1/ramp/webhook/stripe_crypto_onramp',
         [],
         [],
         [],
@@ -49,7 +49,7 @@ it('returns 400 when the Stripe signature is invalid', function () {
 it('returns 400 when the Stripe-Signature header is missing', function () {
     $response = $this->call(
         'POST',
-        '/api/v1/ramp/webhook/stripe_bridge',
+        '/api/v1/ramp/webhook/stripe_crypto_onramp',
         [],
         [],
         [],
@@ -61,12 +61,12 @@ it('returns 400 when the Stripe-Signature header is missing', function () {
 });
 
 it('returns 200 for a valid signature on an ignored event type', function () {
-    $fixtures = require base_path('tests/Fixtures/stripe_bridge_webhooks.php');
+    $fixtures = require base_path('tests/Fixtures/stripe_crypto_onramp_webhooks.php');
     $body = (string) json_encode($fixtures['unrelated_event']);
 
     $response = $this->call(
         'POST',
-        '/api/v1/ramp/webhook/stripe_bridge',
+        '/api/v1/ramp/webhook/stripe_crypto_onramp',
         [],
         [],
         [],
@@ -81,7 +81,7 @@ it('processes a valid session.completed event and updates the session row', func
     $user = User::factory()->create();
     $session = RampSession::create([
         'user_id'             => $user->id,
-        'provider'            => 'stripe_bridge',
+        'provider'            => 'stripe_crypto_onramp',
         'type'                => 'on',
         'fiat_currency'       => 'USD',
         'fiat_amount'         => 100.0,
@@ -91,12 +91,12 @@ it('processes a valid session.completed event and updates the session row', func
         'provider_session_id' => 'cos_test_abc123',
     ]);
 
-    $fixtures = require base_path('tests/Fixtures/stripe_bridge_webhooks.php');
+    $fixtures = require base_path('tests/Fixtures/stripe_crypto_onramp_webhooks.php');
     $body = (string) json_encode($fixtures['session_completed']);
 
     $response = $this->call(
         'POST',
-        '/api/v1/ramp/webhook/stripe_bridge',
+        '/api/v1/ramp/webhook/stripe_crypto_onramp',
         [],
         [],
         [],
@@ -119,7 +119,7 @@ it('preserves raw body bytes end-to-end (no JSON re-encoding)', function () {
 
     $response = $this->call(
         'POST',
-        '/api/v1/ramp/webhook/stripe_bridge',
+        '/api/v1/ramp/webhook/stripe_crypto_onramp',
         [],
         [],
         [],
@@ -137,7 +137,7 @@ it('idempotent: replaying a completed event on a terminal session is a no-op', f
     $user = User::factory()->create();
     $session = RampSession::create([
         'user_id'             => $user->id,
-        'provider'            => 'stripe_bridge',
+        'provider'            => 'stripe_crypto_onramp',
         'type'                => 'on',
         'fiat_currency'       => 'USD',
         'fiat_amount'         => 100.0,
@@ -148,12 +148,12 @@ it('idempotent: replaying a completed event on a terminal session is a no-op', f
         'provider_session_id' => 'cos_test_abc123',
     ]);
 
-    $fixtures = require base_path('tests/Fixtures/stripe_bridge_webhooks.php');
+    $fixtures = require base_path('tests/Fixtures/stripe_crypto_onramp_webhooks.php');
     $body = (string) json_encode($fixtures['session_completed']);
 
     $response = $this->call(
         'POST',
-        '/api/v1/ramp/webhook/stripe_bridge',
+        '/api/v1/ramp/webhook/stripe_crypto_onramp',
         [],
         [],
         [],

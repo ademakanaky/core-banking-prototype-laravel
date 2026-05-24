@@ -30,7 +30,7 @@ it('returns the refreshed session status when session belongs to the caller', fu
 
     $session = RampSession::create([
         'user_id'             => $user->id,
-        'provider'            => 'stripe_bridge',
+        'provider'            => 'stripe_crypto_onramp',
         'type'                => 'on',
         'fiat_currency'       => 'USD',
         'fiat_amount'         => '100',
@@ -57,7 +57,7 @@ it('returns the refreshed session status when session belongs to the caller', fu
     expect($result->isSuccess())->toBeTrue();
     expect($result->getData()['session_id'])->toBe((string) $session->id);
     expect($result->getData()['status'])->toBe('completed');
-    expect($result->getData()['provider'])->toBe('stripe_bridge');
+    expect($result->getData()['provider'])->toBe('stripe_crypto_onramp');
     expect((float) $result->getData()['crypto_amount'])->toBe(99.5);
 });
 
@@ -69,7 +69,7 @@ it('refuses to leak existence of another user\'s session', function () {
 
     $session = RampSession::create([
         'user_id'             => $owner->id,
-        'provider'            => 'stripe_bridge',
+        'provider'            => 'stripe_crypto_onramp',
         'type'                => 'on',
         'fiat_currency'       => 'USD',
         'fiat_amount'         => '100',
