@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Domain\Account\Models\BlockchainAddress;
+use App\Domain\Compliance\Kyc\Observers\BlockchainAddressBridgeObserver;
 use App\Domain\Compliance\Kyc\Providers\BridgeKycProvider;
 use App\Domain\Compliance\Kyc\Providers\OndatoKycProvider;
 use App\Domain\Compliance\Kyc\Registries\KycProviderRouter;
@@ -68,5 +70,13 @@ class KycServiceProvider extends ServiceProvider
                 routing: (array) config('kyc.routing', []),
             );
         });
+    }
+
+    public function boot(): void
+    {
+        // Attaches BlockchainAddressBridgeObserver to the BlockchainAddress
+        // model. Separate from Wallet/BlockchainAddressObserver (Helius/Solana
+        // sync) so the two cross-domain concerns can be disabled independently.
+        BlockchainAddress::observe(BlockchainAddressBridgeObserver::class);
     }
 }
