@@ -198,11 +198,13 @@ class BridgeWebhookController extends Controller
                 return;
             }
 
-            if (in_array(
-                $session->status,
-                [RampSession::STATUS_COMPLETED, RampSession::STATUS_FAILED, RampSession::STATUS_EXPIRED],
-                true,
-            )) {
+            if (
+                in_array(
+                    $session->status,
+                    [RampSession::STATUS_COMPLETED, RampSession::STATUS_FAILED, RampSession::STATUS_EXPIRED],
+                    true,
+                )
+            ) {
                 Log::info('Bridge ramp webhook: session already terminal', [
                     'session_id' => $session->id,
                     'status'     => $session->status,
