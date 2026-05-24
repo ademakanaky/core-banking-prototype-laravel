@@ -6,25 +6,24 @@ namespace App\Domain\Compliance\Kyc\Providers;
 
 use App\Domain\Compliance\Kyc\Contracts\KycProviderInterface;
 use App\Domain\Compliance\Kyc\Enums\KycPurpose;
+use App\Domain\Compliance\Kyc\Exceptions\UnsupportedKycPurposeException;
 use App\Domain\Compliance\Kyc\Models\BridgeCustomer;
+use App\Infrastructure\Bridge\BridgeClient;
+use App\Infrastructure\Bridge\BridgeWebhookVerifier;
+use App\Models\User;
+use Carbon\Carbon;
 use RuntimeException;
 
 /**
- * Bridge.xyz adapter — skeleton.
+ * Bridge.xyz adapter.
  *
- * getName(), getStatus(), and getWebhookSignatureHeader() are real and read
- * from the bridge_customers table + config.
+ * Handles RAMP + CARDS purposes (same Bridge customer record under the
+ * hood). TRUSTCERT routes to OndatoKycProvider per config('kyc.routing').
  *
- * getHostedLink(), getWebhookValidator(), and normalizeWebhookPayload()
- * throw a clear "not yet implemented" error pointing at the work that lands
- * in the BridgeProvider PR (handover §3.1, §3.3). They need a real HTTP
- * client against Bridge's REST API + verification of Bridge's exact webhook
- * signature scheme — shipping a guessed validator here would give false
- * confidence in tests.
- *
- * The interface contract is fully implemented so KycProviderRouter::resolve
- * works at runtime; callers that actually invoke the unimplemented methods
- * get a deterministic error rather than a silent failure.
+ * Lazy customer provisioning: first call to `getHostedLink` creates the
+ * Bridge customer + persists the `bridge_customers` row, then requests a
+ * hosted KYC link. Idempotency-Key prevents duplicate Bridge customers
+ * if the local INSERT fails after the remote call.
  *
  * @see docs/BACKEND_HANDOVER_BRIDGE_RAMP.md §3.1, §3.3
  * @see docs/adr/0005-bridge-xyz-over-stripe-crypto-onramp.md
@@ -32,6 +31,12 @@ use RuntimeException;
  */
 final class BridgeKycProvider implements KycProviderInterface
 {
+    public function __construct(
+        private readonly BridgeClient $client,
+        private readonly BridgeWebhookVerifier $verifier,
+    ) {
+    }
+
     public function getName(): string
     {
         return 'bridge';
@@ -39,12 +44,88 @@ final class BridgeKycProvider implements KycProviderInterface
 
     public function getHostedLink(int $userId, KycPurpose $purpose, array $context = []): string
     {
-        throw new RuntimeException(
-            'BridgeKycProvider::getHostedLink not yet implemented. '
-            . 'Lands in the BridgeProvider PR — see docs/BACKEND_HANDOVER_BRIDGE_RAMP.md §3.1. '
-            . 'Must lazily create the Bridge customer on first call with '
-            . 'Idempotency-Key: bridge_customer:{userId}, then POST /v0/customers/{id}/kyc_links.'
+        if ($purpose !== KycPurpose::RAMP && $purpose !== KycPurpose::CARDS) {
+            throw UnsupportedKycPurposeException::for($this->getName(), $purpose);
+        }
+
+        /** @var User $user */
+        $user = User::findOrFail($userId);
+        $customer = $this->findOrCreateBridgeCustomer($user);
+
+        // Reuse a still-valid link to avoid creating duplicate links.
+        if (
+            $customer->kyc_link_url !== null
+            && $customer->kyc_link_url !== ''
+            && $customer->kyc_link_expires_at !== null
+            && $customer->kyc_link_expires_at->isFuture()
+        ) {
+            return $customer->kyc_link_url;
+        }
+
+        $response = $this->client->createKycLink(
+            $customer->bridge_customer_id,
+            [
+                'type'         => 'individual',
+                'full_name'    => (string) ($user->name ?? ''),
+                'email'        => (string) ($user->email ?? ''),
+                'redirect_uri' => (string) config('kyc.providers.bridge.kyc_redirect_uri', ''),
+            ],
+            idempotencyKey: 'bridge_kyc_link:' . $user->id . ':' . now()->timestamp,
         );
+
+        $url = (string) ($response['url'] ?? $response['link'] ?? '');
+        if ($url === '') {
+            throw new RuntimeException('Bridge createKycLink did not return a hosted link URL.');
+        }
+
+        $expiresAt = isset($response['expires_at'])
+            ? Carbon::parse((string) $response['expires_at'])
+            : null;
+
+        $customer->update([
+            'kyc_link_url'        => $url,
+            'kyc_link_expires_at' => $expiresAt,
+            'kyc_status'          => $customer->kyc_status === BridgeCustomer::KYC_NOT_STARTED
+                ? BridgeCustomer::KYC_PENDING
+                : $customer->kyc_status,
+        ]);
+
+        return $url;
+    }
+
+    private function findOrCreateBridgeCustomer(User $user): BridgeCustomer
+    {
+        $existing = BridgeCustomer::where('user_id', $user->id)->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $defaultFeeBps = (int) config(
+            'kyc.providers.bridge.default_developer_fee_bps',
+            BridgeCustomer::DEV_FEE_BPS_FREE,
+        );
+
+        $response = $this->client->createCustomer(
+            [
+                'type'              => 'individual',
+                'full_name'         => (string) ($user->name ?? ''),
+                'email'             => (string) ($user->email ?? ''),
+                'developer_fee_bps' => $defaultFeeBps,
+            ],
+            idempotencyKey: 'bridge_customer:' . $user->id,
+        );
+
+        $bridgeCustomerId = (string) ($response['id'] ?? '');
+        if ($bridgeCustomerId === '') {
+            throw new RuntimeException('Bridge createCustomer did not return an id.');
+        }
+
+        return BridgeCustomer::create([
+            'user_id'            => $user->id,
+            'bridge_customer_id' => $bridgeCustomerId,
+            'kyc_status'         => BridgeCustomer::KYC_NOT_STARTED,
+            'developer_fee_bps'  => $defaultFeeBps,
+        ]);
     }
 
     public function getStatus(int $userId): array
@@ -77,14 +158,10 @@ final class BridgeKycProvider implements KycProviderInterface
 
     public function getWebhookValidator(): callable
     {
-        return static function (string $rawBody, string $signatureHeader): bool {
-            unset($rawBody, $signatureHeader);
-            throw new RuntimeException(
-                'BridgeKycProvider webhook signature verification not yet implemented. '
-                . 'Lands in the BridgeProvider PR — verify Bridge\'s exact signature scheme '
-                . 'against apidocs.bridge.xyz before shipping a validator.'
-            );
-        };
+        return fn (string $rawBody, string $signatureHeader): bool => $this->verifier->verify(
+            $rawBody,
+            $signatureHeader,
+        );
     }
 
     public function getWebhookSignatureHeader(): string
@@ -94,11 +171,34 @@ final class BridgeKycProvider implements KycProviderInterface
 
     public function normalizeWebhookPayload(array $payload): ?array
     {
-        throw new RuntimeException(
-            'BridgeKycProvider::normalizeWebhookPayload not yet implemented. '
-            . 'Lands in the BridgeProvider PR — must handle customer.kyc_link_completed, '
-            . 'customer.kyc_link_rejected, virtual_account.activity, transfer.completed, '
-            . 'and transfer.failed events per handover §3.1.'
-        );
+        $type = (string) ($payload['type'] ?? '');
+
+        $status = match ($type) {
+            'customer.kyc_link_completed' => 'approved',
+            'customer.kyc_link_rejected'  => 'rejected',
+            default                       => null,
+        };
+
+        if ($status === null) {
+            return null;
+        }
+
+        $object = $payload['data']['object'] ?? $payload['data'] ?? null;
+        if (! is_array($object)) {
+            return null;
+        }
+
+        $bridgeCustomerId = (string) ($object['customer_id'] ?? $object['id'] ?? '');
+        $userId = null;
+        if ($bridgeCustomerId !== '') {
+            $userId = BridgeCustomer::where('bridge_customer_id', $bridgeCustomerId)->value('user_id');
+        }
+
+        return [
+            'user_id'    => $userId !== null ? (int) $userId : null,
+            'event_type' => $type,
+            'status'     => $status,
+            'raw'        => $object,
+        ];
     }
 }

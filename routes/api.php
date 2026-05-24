@@ -353,6 +353,14 @@ Route::post('v1/ramp/webhook/{provider}', [App\Http\Controllers\Api\V1\RampWebho
     ->middleware('api.rate_limit:webhook')
     ->name('api.v1.ramp.webhook');
 
+// Bridge.xyz dedicated webhook (no auth, HMAC verified) — handles both
+// customer.kyc_link_* and virtual_account.* / transfer.* events. See
+// docs/BACKEND_HANDOVER_BRIDGE_RAMP.md §3.1. Configure Bridge dashboard
+// to POST here.
+Route::post('v1/webhooks/bridge', [App\Http\Controllers\Api\V1\BridgeWebhookController::class, 'handle'])
+    ->middleware('api.rate_limit:webhook')
+    ->name('api.v1.webhooks.bridge');
+
 // Bridge.xyz setup (KYC + virtual account provisioning) — distinct from
 // /v1/ramp/* because setup is per-user and one-time. No require.kyc middleware
 // here: these endpoints are how you START Bridge KYC. See ADR-0005.

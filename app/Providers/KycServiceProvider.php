@@ -8,6 +8,8 @@ use App\Domain\Compliance\Kyc\Providers\BridgeKycProvider;
 use App\Domain\Compliance\Kyc\Providers\OndatoKycProvider;
 use App\Domain\Compliance\Kyc\Registries\KycProviderRouter;
 use App\Domain\Compliance\Services\OndatoService;
+use App\Infrastructure\Bridge\BridgeClient;
+use App\Infrastructure\Bridge\BridgeWebhookVerifier;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -31,11 +33,17 @@ class KycServiceProvider extends ServiceProvider
             'kyc'
         );
 
+        $this->app->singleton(BridgeClient::class, static fn () => BridgeClient::fromConfig());
+        $this->app->singleton(BridgeWebhookVerifier::class, static fn () => BridgeWebhookVerifier::fromConfig());
+
         $this->app->singleton(KycProviderRouter::class, function ($app) {
             return new KycProviderRouter(
                 factories: [
                     'ondato' => static fn () => new OndatoKycProvider($app->make(OndatoService::class)),
-                    'bridge' => static fn () => new BridgeKycProvider(),
+                    'bridge' => static fn () => new BridgeKycProvider(
+                        $app->make(BridgeClient::class),
+                        $app->make(BridgeWebhookVerifier::class),
+                    ),
                 ],
                 routing: (array) config('kyc.routing', []),
             );
