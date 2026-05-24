@@ -5,17 +5,20 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Domain\Account\Models\BlockchainAddress;
+use App\Domain\Compliance\Kyc\Listeners\SyncBridgeDevFeeOnTierChange;
 use App\Domain\Compliance\Kyc\Observers\BlockchainAddressBridgeObserver;
 use App\Domain\Compliance\Kyc\Providers\BridgeKycProvider;
 use App\Domain\Compliance\Kyc\Providers\OndatoKycProvider;
 use App\Domain\Compliance\Kyc\Registries\KycProviderRouter;
 use App\Domain\Compliance\Kyc\Services\BridgeDeveloperFeeSync;
 use App\Domain\Compliance\Services\OndatoService;
+use App\Domain\Subscription\Events\SubscriptionTierChanged;
 use App\Domain\Subscription\Projections\SubscriptionProjection;
 use App\Infrastructure\Bridge\BridgeClient;
 use App\Infrastructure\Bridge\BridgeWebhookVerifier;
 use App\Models\User;
 use Closure;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -78,5 +81,12 @@ class KycServiceProvider extends ServiceProvider
         // model. Separate from Wallet/BlockchainAddressObserver (Helius/Solana
         // sync) so the two cross-domain concerns can be disabled independently.
         BlockchainAddress::observe(BlockchainAddressBridgeObserver::class);
+
+        // Per ADR-0006, keep the Bridge customer's per-customer
+        // developer_fee_bps in sync with the user's subscription tier
+        // automatically. The Subscription webhook controller dispatches the
+        // event on every tier-affecting transition; the listener no-ops
+        // when desired == current.
+        Event::listen(SubscriptionTierChanged::class, SyncBridgeDevFeeOnTierChange::class);
     }
 }

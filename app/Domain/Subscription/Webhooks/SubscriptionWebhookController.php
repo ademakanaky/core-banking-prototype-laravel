@@ -30,6 +30,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Subscription\Webhooks;
 
+use App\Domain\Subscription\Events\SubscriptionTierChanged;
 use App\Domain\Subscription\Events\SubscriptionTrialStarted;
 use App\Domain\Subscription\Jobs\Cue\EnqueueTrialEnding1d;
 use App\Domain\Subscription\Jobs\Cue\EnqueueTrialEnding1h;
@@ -207,6 +208,14 @@ final class SubscriptionWebhookController
                     trialEndsAt: $trialEndsAt,
                 ));
             }
+
+            // Tier may have just transitioned (free → pro). Cross-domain listeners
+            // (Compliance/Kyc dev-fee PATCH per ADR-0006) re-read tier from
+            // SubscriptionProjection rather than trusting any payload here.
+            Event::dispatch(new SubscriptionTierChanged(
+                userId: $user->id,
+                source: 'stripe.subscription.created',
+            ));
         }
     }
 
@@ -368,6 +377,19 @@ final class SubscriptionWebhookController
                 );
             }
         }
+
+        // Tier may have transitioned in either direction; fire a re-check
+        // signal so listeners (Compliance/Kyc dev-fee PATCH) can reconcile.
+        // SubscriptionProjection is the source of truth — listener re-reads
+        // it rather than trusting status here.
+        $stripeCustomerId = (string) ($subscription['customer'] ?? '');
+        $user = $stripeCustomerId !== '' ? $this->resolveUserByStripeCustomer($stripeCustomerId) : null;
+        if ($user instanceof User) {
+            Event::dispatch(new SubscriptionTierChanged(
+                userId: $user->id,
+                source: 'stripe.subscription.updated',
+            ));
+        }
     }
 
     /**
@@ -387,6 +409,17 @@ final class SubscriptionWebhookController
 
         // Cashier already keeps subscriptions/items rows in sync.
 
+        // Tier just transitioned pro → free; fire a re-check signal so
+        // listeners (Compliance/Kyc dev-fee PATCH) can reconcile.
+        $stripeCustomerId = (string) ($subscription['customer'] ?? '');
+        $user = $stripeCustomerId !== '' ? $this->resolveUserByStripeCustomer($stripeCustomerId) : null;
+        if ($user instanceof User) {
+            Event::dispatch(new SubscriptionTierChanged(
+                userId: $user->id,
+                source: 'stripe.subscription.deleted',
+            ));
+        }
+
         // Slice 4: insert subscription_canceled_external cue for user-initiated cancels only.
         $cancellationDetails = (array) ($subscription['cancellation_details'] ?? []);
         $reason = (string) ($cancellationDetails['reason'] ?? '');
@@ -394,9 +427,6 @@ final class SubscriptionWebhookController
         if ($reason !== 'cancellation_requested') {
             return;
         }
-
-        $stripeCustomerId = (string) ($subscription['customer'] ?? '');
-        $user = $stripeCustomerId !== '' ? $this->resolveUserByStripeCustomer($stripeCustomerId) : null;
 
         if (! $user instanceof User) {
             return;
