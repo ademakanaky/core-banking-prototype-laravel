@@ -5,12 +5,35 @@ declare(strict_types=1);
 namespace App\Domain\Ramp\Providers;
 
 use App\Domain\Ramp\Contracts\RampProviderInterface;
-use App\Domain\Ramp\Services\StripeBridgeService;
+use App\Domain\Ramp\Services\StripeCryptoOnrampService;
 
-class StripeBridgeProvider implements RampProviderInterface
+/**
+ * Stripe Crypto Onramp provider (hosted card-payment checkout).
+ *
+ * Previously misnamed StripeBridgeProvider — that label conflated two
+ * distinct Stripe products. See docs/adr/0005-bridge-xyz-over-stripe-crypto-onramp.md.
+ *
+ * Disabled by default in v1; kept under config key `stripe_crypto_onramp`
+ * with a deprecated `stripe_bridge` alias for backwards-compatible env
+ * vars. Activated only as a v1.1 fallback if Bridge bank-rail activation
+ * lags.
+ */
+class StripeCryptoOnrampProvider implements RampProviderInterface
 {
+    public const PROVIDER_NAME = 'stripe_crypto_onramp';
+
+    /**
+     * Deprecated provider name retained for cross-context references
+     * (RevenueOutboxEvent rows, PriceQuoteIssuer historic shape, env vars
+     * that still say RAMP_PROVIDER=stripe_bridge). Remove in v1.1 once
+     * deployed env files have rolled forward.
+     *
+     * @deprecated Use PROVIDER_NAME.
+     */
+    public const LEGACY_PROVIDER_NAME = 'stripe_bridge';
+
     public function __construct(
-        private readonly StripeBridgeService $service,
+        private readonly StripeCryptoOnrampService $service,
     ) {
     }
 
@@ -32,7 +55,7 @@ class StripeBridgeProvider implements RampProviderInterface
             'session_id'   => $result['session_id'],
             'checkout_url' => $result['checkout_url'],
             'metadata'     => [
-                'provider'          => 'stripe_bridge',
+                'provider'          => self::PROVIDER_NAME,
                 'stripe_session_id' => $result['session_id'],
                 'client_secret'     => $result['client_secret'],
                 'checkout_url'      => $result['checkout_url'],
@@ -55,7 +78,7 @@ class StripeBridgeProvider implements RampProviderInterface
             'fiat_amount'   => null,
             'crypto_amount' => $cryptoAmount,
             'metadata'      => [
-                'provider'      => 'stripe_bridge',
+                'provider'      => self::PROVIDER_NAME,
                 'stripe_status' => $stripeSession['status'],
             ],
         ];
@@ -176,6 +199,6 @@ class StripeBridgeProvider implements RampProviderInterface
 
     public function getName(): string
     {
-        return 'stripe_bridge';
+        return self::PROVIDER_NAME;
     }
 }

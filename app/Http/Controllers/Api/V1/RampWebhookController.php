@@ -26,9 +26,9 @@ class RampWebhookController extends Controller
         path: '/api/v1/ramp/webhook/{provider}',
         operationId: 'v1RampWebhook',
         tags: ['Ramp'],
-        summary: 'Ramp provider webhook (Stripe Bridge, Onramper, etc.)',
+        summary: 'Ramp provider webhook (Stripe Crypto Onramp, Onramper, Bridge.xyz, etc.)',
         parameters: [
-            new OA\Parameter(name: 'provider', in: 'path', required: true, schema: new OA\Schema(type: 'string', enum: ['stripe_bridge', 'onramper', 'mock'])),
+            new OA\Parameter(name: 'provider', in: 'path', required: true, schema: new OA\Schema(type: 'string', enum: ['stripe_crypto_onramp', 'onramper', 'mock', 'stripe_bridge'], description: '`stripe_bridge` is deprecated — use `stripe_crypto_onramp`')),
         ]
     )]
     #[OA\Response(response: 200, description: 'Webhook processed')]

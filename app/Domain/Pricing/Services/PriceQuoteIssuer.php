@@ -9,6 +9,7 @@ use App\Domain\Pricing\Models\PriceQuote;
 use App\Domain\Pricing\ValueObjects\FeeTier;
 use App\Domain\Pricing\ValueObjects\Money;
 use App\Domain\Pricing\ValueObjects\Quote;
+use App\Domain\Ramp\Providers\StripeCryptoOnrampProvider;
 use App\Models\User;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
@@ -402,7 +403,7 @@ final class PriceQuoteIssuer
                 'label'         => 'provider',
                 'amount'        => $providerFee->jsonSerialize(),
                 'eurEquivalent' => $providerFee->jsonSerialize(),
-                'provider'      => 'stripe_bridge',
+                'provider'      => StripeCryptoOnrampProvider::PROVIDER_NAME,
             ],
         ];
 

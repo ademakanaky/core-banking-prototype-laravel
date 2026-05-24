@@ -30,7 +30,7 @@ it('returns a checkout URL when RampService creates the session', function () {
 
     $session = new RampSession();
     $session->id = 'sess-uuid-1';
-    $session->provider = 'stripe_bridge';
+    $session->provider = 'stripe_crypto_onramp';
     $session->status = RampSession::STATUS_PENDING;
     $session->metadata = ['checkout_url' => 'https://checkout.stripe.com/abc'];
 
@@ -50,7 +50,7 @@ it('returns a checkout URL when RampService creates the session', function () {
     expect($result->getData())->toMatchArray([
         'session_id'   => 'sess-uuid-1',
         'checkout_url' => 'https://checkout.stripe.com/abc',
-        'provider'     => 'stripe_bridge',
+        'provider'     => 'stripe_crypto_onramp',
         'status'       => 'pending',
     ]);
 });

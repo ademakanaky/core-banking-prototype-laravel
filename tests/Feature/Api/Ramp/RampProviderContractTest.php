@@ -11,12 +11,12 @@ declare(strict_types=1);
 use App\Domain\Ramp\Contracts\RampProviderInterface;
 use App\Domain\Ramp\Providers\MockRampProvider;
 use App\Domain\Ramp\Providers\OnramperProvider;
-use App\Domain\Ramp\Providers\StripeBridgeProvider;
+use App\Domain\Ramp\Providers\StripeCryptoOnrampProvider;
 
 dataset('ramp_providers', [
-    'mock'          => fn () => app(MockRampProvider::class),
-    'onramper'      => fn () => app(OnramperProvider::class),
-    'stripe_bridge' => fn () => app(StripeBridgeProvider::class),
+    'mock'                 => fn () => app(MockRampProvider::class),
+    'onramper'             => fn () => app(OnramperProvider::class),
+    'stripe_crypto_onramp' => fn () => app(StripeCryptoOnrampProvider::class),
 ]);
 
 beforeEach(function () {

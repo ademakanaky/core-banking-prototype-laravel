@@ -353,6 +353,19 @@ Route::post('v1/ramp/webhook/{provider}', [App\Http\Controllers\Api\V1\RampWebho
     ->middleware('api.rate_limit:webhook')
     ->name('api.v1.ramp.webhook');
 
+// Bridge.xyz setup (KYC + virtual account provisioning) — distinct from
+// /v1/ramp/* because setup is per-user and one-time. No require.kyc middleware
+// here: these endpoints are how you START Bridge KYC. See ADR-0005.
+Route::prefix('v1/user')->name('api.v1.user.')
+    ->middleware(['auth:sanctum'])
+    ->group(function () {
+        Route::get('/bridge-setup-status', [App\Http\Controllers\Api\V1\BridgeSetupController::class, 'status'])
+            ->middleware('api.rate_limit:query')
+            ->name('bridge-setup-status');
+        Route::post('/bridge-kyc-link', [App\Http\Controllers\Api\V1\BridgeSetupController::class, 'kycLink'])
+            ->name('bridge-kyc-link');
+    });
+
 // v5.14.0 — Alchemy Address Activity Webhook (no auth, HMAC verified)
 Route::post('webhooks/alchemy/address-activity', [App\Http\Controllers\Api\Webhook\AlchemyWebhookController::class, 'handle'])
     ->middleware('api.rate_limit:webhook')

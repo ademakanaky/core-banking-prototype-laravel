@@ -4,7 +4,7 @@
  * Realistic Stripe Crypto Onramp webhook event fixtures.
  *
  * These mirror the shape of events Stripe actually sends, used across
- * StripeBridgeRampTest and RampProviderContractTest.
+ * StripeCryptoOnrampRampTest and RampProviderContractTest.
  *
  * @see https://docs.stripe.com/crypto/onramp
  */

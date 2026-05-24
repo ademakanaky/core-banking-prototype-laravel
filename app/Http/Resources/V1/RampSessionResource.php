@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\V1;
 
+use App\Domain\Ramp\Providers\StripeCryptoOnrampProvider;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -37,13 +38,21 @@ class RampSessionResource extends JsonResource
 
     /**
      * Resolve a human-readable status label.
-     * For Stripe Bridge sessions, use the label from webhook metadata if available.
+     * For Stripe Crypto Onramp sessions, use the label from webhook metadata
+     * if available. Historic rows may carry the legacy provider name; we
+     * match both.
      */
     private function resolveStatusLabel(): string
     {
         $metadata = $this->metadata ?? [];
 
-        if ($this->provider === 'stripe_bridge' && isset($metadata['stripe_status_label'])) {
+        $isStripeOnramp = in_array(
+            $this->provider,
+            [StripeCryptoOnrampProvider::PROVIDER_NAME, StripeCryptoOnrampProvider::LEGACY_PROVIDER_NAME],
+            true,
+        );
+
+        if ($isStripeOnramp && isset($metadata['stripe_status_label'])) {
             return (string) $metadata['stripe_status_label'];
         }
 

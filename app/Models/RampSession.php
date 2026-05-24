@@ -23,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $stripe_session_id
  * @property string|null $stripe_client_secret
  * @property array<string, mixed>|null $metadata
+ * @property array<string, mixed>|null $deposit_instructions
+ * @property string $source
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
  */
@@ -40,6 +42,10 @@ class RampSession extends Model
 
     public const STATUS_EXPIRED = 'expired';
 
+    public const SOURCE_USER_INITIATED = 'user_initiated';
+
+    public const SOURCE_BRIDGE_INITIATED = 'bridge_initiated';
+
     protected $fillable = [
         'user_id',
         'provider',
@@ -50,10 +56,12 @@ class RampSession extends Model
         'crypto_amount',
         'wallet_address',
         'status',
+        'source',
         'provider_session_id',
         'stripe_session_id',
         'stripe_client_secret',
         'metadata',
+        'deposit_instructions',
     ];
 
     /** @return array<string, string> */
@@ -63,6 +71,7 @@ class RampSession extends Model
             'fiat_amount'          => 'float',
             'crypto_amount'        => 'float',
             'metadata'             => 'array',
+            'deposit_instructions' => 'encrypted:array',
             'stripe_client_secret' => 'encrypted',
         ];
     }

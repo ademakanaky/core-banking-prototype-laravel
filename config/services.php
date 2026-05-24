@@ -73,11 +73,16 @@ return [
     ],
 
     'stripe' => [
-        'key'                   => env('STRIPE_KEY'),
-        'secret'                => env('STRIPE_SECRET'),
-        'webhook_secret'        => env('STRIPE_WEBHOOK_SECRET'),
-        'kyc_webhook_secret'    => env('STRIPE_KYC_WEBHOOK_SECRET'),
-        'bridge_webhook_secret' => env('STRIPE_BRIDGE_WEBHOOK_SECRET'),
+        'key'                => env('STRIPE_KEY'),
+        'secret'             => env('STRIPE_SECRET'),
+        'webhook_secret'     => env('STRIPE_WEBHOOK_SECRET'),
+        'kyc_webhook_secret' => env('STRIPE_KYC_WEBHOOK_SECRET'),
+        // Stripe Crypto Onramp webhook secret. Reads the new env var first;
+        // falls back to STRIPE_BRIDGE_WEBHOOK_SECRET (deprecated) so deployed
+        // .env files keep working until they roll forward. Config key name
+        // (`bridge_webhook_secret`) preserved to avoid a wider rename of
+        // call sites in StripeCryptoOnrampProvider; remove in v1.1.
+        'bridge_webhook_secret' => env('STRIPE_CRYPTO_ONRAMP_WEBHOOK_SECRET') ?? env('STRIPE_BRIDGE_WEBHOOK_SECRET'),
 
         // Plan B Backend-Q1: single config key consumed by Cashier and any future
         // Stripe Bridge clients. AppServiceProvider::boot wires the StripeClient
