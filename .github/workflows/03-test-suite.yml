@@ -181,7 +181,11 @@ jobs:
   feature-tests:
     name: Feature Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Feature Tests suite is consistently sitting just under the previous 25min
+    # cap; consecutive timeouts on the Bridge ramp foundations PR demonstrated
+    # the boundary is real. Bumped to 30 to match the Integration / multi-conn
+    # jobs in this same workflow.
+    timeout-minutes: 30
     
     services:
       mysql:
