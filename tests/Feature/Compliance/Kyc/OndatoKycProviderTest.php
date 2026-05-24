@@ -92,8 +92,7 @@ it('normalizes Ondato PROCESSED status to "approved"', function () {
     $normalized = $provider->normalizeWebhookPayload([
         'status' => 'PROCESSED',
         'id'     => 'evt-1',
-    ]);
+    ]) ?? throw new RuntimeException('Expected a normalized payload, got null');
 
-    expect($normalized)->not->toBeNull();
     expect($normalized['status'])->toBe('approved');
 });

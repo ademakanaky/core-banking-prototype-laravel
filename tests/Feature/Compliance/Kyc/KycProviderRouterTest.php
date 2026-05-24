@@ -72,6 +72,8 @@ it('every provider returns a stable name and signature header', function () {
         $provider = $router->resolveByName($name);
         expect($provider)->toBeInstanceOf(KycProviderInterface::class);
         expect($provider->getName())->toBe($name);
-        expect($provider->getWebhookSignatureHeader())->toBeString()->not->toBeEmpty();
+        $header = $provider->getWebhookSignatureHeader();
+        expect($header)->toBeString();
+        expect($header)->not->toBe('');
     }
 });

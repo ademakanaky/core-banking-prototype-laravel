@@ -16,19 +16,21 @@ use App\Domain\Ramp\Contracts\RampProviderInterface;
 use App\Domain\Ramp\Providers\StripeCryptoOnrampProvider;
 use App\Domain\Ramp\Registries\RampProviderRegistry;
 use Illuminate\Support\Facades\Log;
+use Mockery\MockInterface;
 
 it('resolves legacy stripe_bridge config value to StripeCryptoOnrampProvider with a deprecation warning', function () {
     config(['ramp.default_provider' => 'stripe_bridge']);
     app()->forgetInstance(RampProviderInterface::class);
 
-    Log::spy();
+    /** @var MockInterface $logSpy */
+    $logSpy = Log::spy();
 
     $provider = app(RampProviderInterface::class);
 
     expect($provider)->toBeInstanceOf(StripeCryptoOnrampProvider::class);
     expect($provider->getName())->toBe('stripe_crypto_onramp');
 
-    Log::shouldHaveReceived('warning')
+    $logSpy->shouldHaveReceived('warning')
         ->once()
         ->withArgs(fn (string $message) => str_contains($message, 'stripe_bridge') && str_contains($message, 'deprecated'));
 });
