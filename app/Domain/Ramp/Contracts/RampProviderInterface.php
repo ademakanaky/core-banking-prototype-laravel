@@ -9,8 +9,18 @@ interface RampProviderInterface
     /**
      * Create a ramp session via checkout API.
      *
-     * @param  array{type: string, fiat_currency: string, fiat_amount: string, crypto_currency: string, wallet_address: string, quote_id: string|null}  $params
-     * @return array{session_id: string, checkout_url: string|null, metadata: array<string, mixed>}
+     * Optional keys:
+     *   - user_id: int — RampService injects the authenticated user's id so
+     *     providers can scope per-user state (e.g. BridgeProvider reads the
+     *     user's bridge_customers row for virtual-account onramp).
+     *   - network: string — destination chain (e.g. 'polygon'). Defaults to
+     *     the provider's default network when omitted.
+     *   - deposit_instructions: when returned, RampService persists into
+     *     ramp_sessions.deposit_instructions (encrypted column) so mobile
+     *     can read account number / IBAN / memo for bank-rail onramp.
+     *
+     * @param  array{type: string, fiat_currency: string, fiat_amount: string, crypto_currency: string, wallet_address: string, quote_id: string|null, user_id?: int, network?: string}  $params
+     * @return array{session_id: string, checkout_url: string|null, metadata: array<string, mixed>, deposit_instructions?: array<string, mixed>|null}
      */
     public function createSession(array $params): array;
 

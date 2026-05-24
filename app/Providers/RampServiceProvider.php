@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Domain\Ramp\Clients\OnramperClient;
 use App\Domain\Ramp\Contracts\RampProviderInterface;
+use App\Domain\Ramp\Providers\BridgeProvider;
 use App\Domain\Ramp\Providers\MockRampProvider;
 use App\Domain\Ramp\Providers\OnramperProvider;
 use App\Domain\Ramp\Providers\StripeCryptoOnrampProvider;
@@ -13,6 +14,8 @@ use App\Domain\Ramp\Registries\RampProviderRegistry;
 use App\Domain\Ramp\Services\RampService;
 use App\Domain\Ramp\Services\StripeCryptoOnrampService;
 use App\Domain\Subscription\Projections\SubscriptionProjection;
+use App\Infrastructure\Bridge\BridgeClient;
+use App\Infrastructure\Bridge\BridgeWebhookVerifier;
 use App\Models\User;
 use Closure;
 use Illuminate\Support\Facades\Log;
@@ -46,8 +49,12 @@ class RampServiceProvider extends ServiceProvider
 
             return match ($provider) {
                 StripeCryptoOnrampProvider::PROVIDER_NAME => new StripeCryptoOnrampProvider($app->make(StripeCryptoOnrampService::class)),
-                'onramper'                                => new OnramperProvider($app->make(OnramperClient::class)),
-                default                                   => new MockRampProvider(),
+                BridgeProvider::PROVIDER_NAME             => new BridgeProvider(
+                    $app->make(BridgeClient::class),
+                    $app->make(BridgeWebhookVerifier::class),
+                ),
+                'onramper' => new OnramperProvider($app->make(OnramperClient::class)),
+                default    => new MockRampProvider(),
             };
         });
 
@@ -69,6 +76,10 @@ class RampServiceProvider extends ServiceProvider
 
         $this->app->singleton(RampProviderRegistry::class, function ($app) {
             $stripeFactory = static fn () => new StripeCryptoOnrampProvider($app->make(StripeCryptoOnrampService::class));
+            $bridgeFactory = static fn () => new BridgeProvider(
+                $app->make(BridgeClient::class),
+                $app->make(BridgeWebhookVerifier::class),
+            );
 
             return new RampProviderRegistry([
                 'onramper'                                => static fn () => new OnramperProvider($app->make(OnramperClient::class)),
@@ -76,6 +87,7 @@ class RampServiceProvider extends ServiceProvider
                 // Deprecated alias — keeps the webhook URL /api/v1/ramp/webhook/stripe_bridge
                 // resolving while deployed env files still carry the legacy name.
                 StripeCryptoOnrampProvider::LEGACY_PROVIDER_NAME => $stripeFactory,
+                BridgeProvider::PROVIDER_NAME                    => $bridgeFactory,
                 'mock'                                           => static fn () => new MockRampProvider(),
             ]);
         });

@@ -1,32 +1,46 @@
 <?php
 
 /**
- * Tests for the BridgeKycProvider skeleton — only the methods that are
- * actually implemented in this PR. The "not yet implemented" methods
- * (getHostedLink, getWebhookValidator-execution, normalizeWebhookPayload)
- * deliberately throw RuntimeException and will be replaced + tested in the
- * BridgeProvider PR (handover §3.1).
+ * Unit tests for BridgeKycProvider's status + signature paths. The
+ * lazy-customer-creation flow + webhook normalization are covered by the
+ * full integration tests in tests/Feature/Api/Bridge/*.
+ *
+ * Pre-§3.1 this file also asserted "deferred" 501 behavior; those tests
+ * were removed when the real implementation landed.
  */
 
 declare(strict_types=1);
 
-use App\Domain\Compliance\Kyc\Enums\KycPurpose;
 use App\Domain\Compliance\Kyc\Models\BridgeCustomer;
 use App\Domain\Compliance\Kyc\Providers\BridgeKycProvider;
+use App\Infrastructure\Bridge\BridgeClient;
+use App\Infrastructure\Bridge\BridgeWebhookVerifier;
 use App\Models\User;
 
+beforeEach(function () {
+    config([
+        'kyc.providers.bridge.api_key'        => 'sk_test',
+        'kyc.providers.bridge.webhook_secret' => 'whsec_test',
+    ]);
+});
+
+function makeBridgeKycProvider(): BridgeKycProvider
+{
+    return new BridgeKycProvider(BridgeClient::fromConfig(), BridgeWebhookVerifier::fromConfig());
+}
+
 it('reports its name as "bridge"', function () {
-    expect((new BridgeKycProvider())->getName())->toBe('bridge');
+    expect(makeBridgeKycProvider()->getName())->toBe('bridge');
 });
 
 it('reports Bridge-Signature as the webhook signature header', function () {
-    expect((new BridgeKycProvider())->getWebhookSignatureHeader())->toBe('Bridge-Signature');
+    expect(makeBridgeKycProvider()->getWebhookSignatureHeader())->toBe('Bridge-Signature');
 });
 
 it('returns not_started status when no bridge_customers row exists', function () {
     $user = User::factory()->create();
 
-    $result = (new BridgeKycProvider())->getStatus($user->id);
+    $result = makeBridgeKycProvider()->getStatus($user->id);
 
     expect($result['status'])->toBe('not_started');
     expect($result['metadata'])->toBe([]);
@@ -43,7 +57,7 @@ it('reads kyc_status from bridge_customers row', function () {
         'developer_fee_bps'  => 75,
     ]);
 
-    $result = (new BridgeKycProvider())->getStatus($user->id);
+    $result = makeBridgeKycProvider()->getStatus($user->id);
 
     expect($result['status'])->toBe('approved');
     expect($result['metadata']['bridge_customer_id'])->toBe('cust_test_123');
@@ -60,20 +74,34 @@ it('reports virtual_account_ready false when no virtual_account_id yet', functio
         'developer_fee_bps'  => 75,
     ]);
 
-    $result = (new BridgeKycProvider())->getStatus($user->id);
+    $result = makeBridgeKycProvider()->getStatus($user->id);
 
     expect($result['status'])->toBe('pending');
     expect($result['metadata']['virtual_account_ready'])->toBeFalse();
 });
 
-it('throws a clear "deferred" RuntimeException for getHostedLink', function () {
-    expect(fn () => (new BridgeKycProvider())->getHostedLink(1, KycPurpose::RAMP))
-        ->toThrow(RuntimeException::class, 'BridgeProvider PR');
+it('normalizes customer.kyc_link_completed → approved', function () {
+    $user = User::factory()->create();
+    BridgeCustomer::create([
+        'user_id'            => $user->id,
+        'bridge_customer_id' => 'cust_norm_1',
+        'kyc_status'         => BridgeCustomer::KYC_PENDING,
+        'developer_fee_bps'  => 75,
+    ]);
+
+    $normalized = makeBridgeKycProvider()->normalizeWebhookPayload([
+        'type' => 'customer.kyc_link_completed',
+        'data' => ['object' => ['customer_id' => 'cust_norm_1']],
+    ]) ?? throw new RuntimeException('Expected normalized payload, got null');
+
+    expect($normalized['status'])->toBe('approved');
+    expect($normalized['event_type'])->toBe('customer.kyc_link_completed');
+    expect($normalized['user_id'])->toBe($user->id);
 });
 
-it('throws a clear "deferred" RuntimeException for normalizeWebhookPayload', function () {
-    expect(fn () => (new BridgeKycProvider())->normalizeWebhookPayload(['type' => 'transfer.completed']))
-        ->toThrow(RuntimeException::class, 'BridgeProvider PR');
+it('returns null from normalizeWebhookPayload on unrelated event types (e.g. transfer.*)', function () {
+    expect(makeBridgeKycProvider()->normalizeWebhookPayload(['type' => 'transfer.completed']))
+        ->toBeNull();
 });
 
 it('encrypts virtual_account_details at rest', function () {
@@ -99,7 +127,7 @@ it('encrypts virtual_account_details at rest', function () {
 
     // Encrypted ciphertext should NOT contain the plaintext IBAN
     expect($raw)->not->toContain('GB29NWBK60161331926819');
-    expect($raw)->not->toBe(json_encode($details));
+    expect($raw)->not->toBe((string) json_encode($details));
 
     // Reading through the model returns the decrypted array
     $customer = BridgeCustomer::where('user_id', $user->id)->firstOrFail();

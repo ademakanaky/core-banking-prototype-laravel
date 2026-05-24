@@ -41,6 +41,15 @@ return [
             'enabled'        => (bool) (env('STRIPE_CRYPTO_ONRAMP_ENABLED') ?? env('STRIPE_BRIDGE_ENABLED', false)),
             'webhook_secret' => env('STRIPE_CRYPTO_ONRAMP_WEBHOOK_SECRET') ?? env('STRIPE_BRIDGE_WEBHOOK_SECRET'),
         ],
+
+        // Bridge.xyz — primary v1 fiat ↔ stablecoin rail. Credentials live
+        // under `kyc.providers.bridge.*` in config/kyc.php (single source of
+        // truth for both ramp and KYC flows). This block exists for the
+        // RampProviderRegistry to list `bridge` as a known driver.
+        'bridge' => [
+            'driver'  => 'bridge',
+            'enabled' => (bool) env('BRIDGE_ENABLED', true),
+        ],
     ],
 
     /*
