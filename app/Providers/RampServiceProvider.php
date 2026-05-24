@@ -12,6 +12,9 @@ use App\Domain\Ramp\Providers\StripeCryptoOnrampProvider;
 use App\Domain\Ramp\Registries\RampProviderRegistry;
 use App\Domain\Ramp\Services\RampService;
 use App\Domain\Ramp\Services\StripeCryptoOnrampService;
+use App\Domain\Subscription\Projections\SubscriptionProjection;
+use App\Models\User;
+use Closure;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 
@@ -48,9 +51,19 @@ class RampServiceProvider extends ServiceProvider
             };
         });
 
+        // Tier resolver — wired to SubscriptionProjection in production; tests
+        // can rebind the closure directly without mocking the final projection
+        // class. Returns 'free' or 'pro'.
+        $this->app->bind('ramp.tier_resolver', function ($app): Closure {
+            $projection = $app->make(SubscriptionProjection::class);
+
+            return static fn (User $user): string => ($projection->for($user)['tier'] ?? 'free') === 'pro' ? 'pro' : 'free';
+        });
+
         $this->app->bind(RampService::class, function ($app) {
             return new RampService(
-                $app->make(RampProviderInterface::class)
+                $app->make(RampProviderInterface::class),
+                $app->make('ramp.tier_resolver'),
             );
         });
 

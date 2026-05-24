@@ -8,31 +8,140 @@ use App\Domain\Ramp\Contracts\RampProviderInterface;
 use App\Domain\Ramp\Exceptions\InvalidWebhookSignatureException;
 use App\Models\RampSession;
 use App\Models\User;
+use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class RampService
 {
+    /**
+     * Per ADR-0006: Free tier pays 0.75% Zelta markup on top of the provider's
+     * own fee. Pro pays 0%. The markup is collected via Bridge developer fees
+     * at the provider layer, but we show it as a discrete line item in the
+     * quote so the user knows what they're paying for.
+     */
+    private const ZELTA_MARKUP_BPS_FREE = 75;
+
+    private const ZELTA_MARKUP_BPS_PRO = 0;
+
+    /**
+     * @param  Closure(User): string|null  $tierResolver  Returns 'free' or 'pro' for the given user.
+     *                                                    Null defaults every user to 'free' (no markup waiver).
+     */
     public function __construct(
         private readonly RampProviderInterface $provider,
+        private readonly ?Closure $tierResolver = null,
     ) {
     }
 
     /**
      * @return array{quotes: array<int, array<string, mixed>>, provider: string, valid_until: string}
      */
-    public function getQuotes(string $type, string $fiatCurrency, string $fiatAmount, string $cryptoCurrency): array
-    {
+    public function getQuotes(
+        string $type,
+        string $fiatCurrency,
+        string $fiatAmount,
+        string $cryptoCurrency,
+        ?User $user = null,
+    ): array {
         $this->validateRampParams($type, $fiatCurrency, $fiatAmount, $cryptoCurrency);
 
         $quotes = $this->provider->getQuotes($type, $fiatCurrency, $fiatAmount, $cryptoCurrency);
+
+        $tier = $this->resolveTier($user);
+        $quotes = array_map(
+            fn (array $quote): array => $this->withZeltaMarkup($quote, $fiatAmount, $fiatCurrency, $tier),
+            $quotes,
+        );
 
         return [
             'quotes'      => $quotes,
             'provider'    => $this->provider->getName(),
             'valid_until' => now()->addSeconds(60)->toIso8601String(),
         ];
+    }
+
+    /**
+     * Layer the Zelta markup on top of a provider quote per ADR-0006. The
+     * provider's `fee` is the provider's own fee (e.g. Bridge's 10 bps); we
+     * add `zeltaMarkup` and `total` as the rendered cost to the user.
+     *
+     * FX spread is reported as a discrete line item; the provider sets it on
+     * the quote when conversion is needed (passes through verbatim — we
+     * never mark up FX per §2.6).
+     *
+     * @param  array<string, mixed>  $quote
+     * @return array<string, mixed>
+     */
+    private function withZeltaMarkup(array $quote, string $fiatAmount, string $fiatCurrency, string $tier): array
+    {
+        /** @var numeric-string $fiat */
+        $fiat = $fiatAmount;
+        $fiat = bcadd($fiat, '0', 4);
+
+        $markupBps = $tier === 'pro' ? self::ZELTA_MARKUP_BPS_PRO : self::ZELTA_MARKUP_BPS_FREE;
+        // markup = fiat * (bps / 10000)
+        $markup = bcdiv(bcmul($fiat, (string) $markupBps, 4), '10000', 4);
+        $markup = bcadd($markup, '0', 2);
+
+        $providerFeeStr = $this->toNumericMoney($quote['fee'] ?? 0);
+        $networkFeeStr = $this->toNumericMoney($quote['network_fee'] ?? 0);
+        $fxSpreadStr = $this->toNumericMoney($quote['fx_spread'] ?? 0);
+
+        $total = bcadd($providerFeeStr, $networkFeeStr, 2);
+        $total = bcadd($total, $fxSpreadStr, 2);
+        $total = bcadd($total, $markup, 2);
+
+        $quote['fees'] = [
+            'providerFee'       => $providerFeeStr,
+            'networkFee'        => $networkFeeStr,
+            'fxSpread'          => $fxSpreadStr,
+            'zeltaMarkup'       => $markup,
+            'zeltaMarkupWaived' => $tier === 'pro',
+            'zeltaMarkupTier'   => $tier,
+            'feeCurrency'       => $fiatCurrency,
+            'total'             => $total,
+        ];
+
+        return $quote;
+    }
+
+    /**
+     * Normalize any numeric scalar to a 2-decimal numeric-string suitable for
+     * bcmath. Provider interfaces declare these as float, so we convert via
+     * the bcmath roundtrip — start from is_numeric() so PHPStan accepts the
+     * input as numeric, then bcadd-normalize down to 2 decimals.
+     *
+     * @return numeric-string
+     */
+    private function toNumericMoney(mixed $value): string
+    {
+        if (! is_numeric($value)) {
+            return '0.00';
+        }
+
+        // number_format guarantees the literal output is a numeric-string,
+        // but its return type is non-empty-string. Use the value through
+        // bcmath directly: cast to string is already safe (is_numeric).
+        $str = (string) $value;
+        if (! preg_match('/^-?\d+(\.\d+)?$/', $str)) {
+            return '0.00';
+        }
+
+        /** @var numeric-string $str */
+        return bcadd($str, '0', 2);
+    }
+
+    private function resolveTier(?User $user): string
+    {
+        if ($user === null || $this->tierResolver === null) {
+            return 'free';
+        }
+
+        $tier = ($this->tierResolver)($user);
+
+        return $tier === 'pro' ? 'pro' : 'free';
     }
 
     public function createSession(

@@ -73,7 +73,8 @@ class RampController extends Controller
                 $request->input('type'),
                 strtoupper($request->input('fiat')),
                 (string) $request->input('amount'),
-                strtoupper($request->input('crypto'))
+                strtoupper($request->input('crypto')),
+                $request->user(),
             );
 
             return response()->json(['data' => $result]);
