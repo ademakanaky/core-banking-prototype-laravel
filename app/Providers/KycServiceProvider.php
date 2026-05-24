@@ -7,9 +7,13 @@ namespace App\Providers;
 use App\Domain\Compliance\Kyc\Providers\BridgeKycProvider;
 use App\Domain\Compliance\Kyc\Providers\OndatoKycProvider;
 use App\Domain\Compliance\Kyc\Registries\KycProviderRouter;
+use App\Domain\Compliance\Kyc\Services\BridgeDeveloperFeeSync;
 use App\Domain\Compliance\Services\OndatoService;
+use App\Domain\Subscription\Projections\SubscriptionProjection;
 use App\Infrastructure\Bridge\BridgeClient;
 use App\Infrastructure\Bridge\BridgeWebhookVerifier;
+use App\Models\User;
+use Closure;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -35,6 +39,22 @@ class KycServiceProvider extends ServiceProvider
 
         $this->app->singleton(BridgeClient::class, static fn () => BridgeClient::fromConfig());
         $this->app->singleton(BridgeWebhookVerifier::class, static fn () => BridgeWebhookVerifier::fromConfig());
+
+        // Bridge dev-fee resolver — same Closure-binding pattern as
+        // RampService's tier resolver. Sidesteps the final SubscriptionProjection
+        // class for testability.
+        $this->app->bind('bridge.tier_resolver', function ($app): Closure {
+            $projection = $app->make(SubscriptionProjection::class);
+
+            return static fn (User $user): string => ($projection->for($user)['tier'] ?? 'free') === 'pro' ? 'pro' : 'free';
+        });
+
+        $this->app->bind(BridgeDeveloperFeeSync::class, function ($app): BridgeDeveloperFeeSync {
+            return new BridgeDeveloperFeeSync(
+                $app->make(BridgeClient::class),
+                $app->make('bridge.tier_resolver'),
+            );
+        });
 
         $this->app->singleton(KycProviderRouter::class, function ($app) {
             return new KycProviderRouter(
