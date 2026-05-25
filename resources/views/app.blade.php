@@ -159,7 +159,7 @@
     <a href="#main-content" class="skip-to-content">Skip to content</a>
 
     @php
-    $navLinks = ['Features' => '#features', 'AI' => '#agentic', 'Security' => '#security', 'FAQ' => '#faq'];
+    $navLinks = ['Get the App' => '#get-the-app', 'Features' => '#features', 'AI' => '#agentic', 'Security' => '#security', 'FAQ' => '#faq'];
     @endphp
 
     {{-- ═══════════════════════════════════════════════════════════════
@@ -242,17 +242,26 @@
 
                 {{-- App store badges --}}
                 <div class="mt-8">
-                    <p class="mb-3 text-[10px] uppercase tracking-[0.3em] font-mono text-text-muted">Coming Soon to Mobile</p>
+                    <p class="mb-3 text-[10px] uppercase tracking-[0.3em] font-mono text-text-muted">Now in Open Testing on Android</p>
                     <div class="flex gap-3">
-                        @foreach([['label' => 'App Store', 'sub' => 'Download on the'], ['label' => 'Google Play', 'sub' => 'Get it on']] as $store)
+                        {{-- Apple: TestFlight pending --}}
                         <div class="flex h-10 items-center gap-2 rounded-lg px-4 cursor-not-allowed opacity-50"
-                             style="border: 2px solid rgba(10,10,10,0.12); background: rgba(255,255,255,0.5);">
+                             style="border: 2px solid rgba(10,10,10,0.12); background: rgba(255,255,255,0.5);"
+                             title="iOS TestFlight coming soon">
                             <div>
-                                <p class="text-[8px] text-text-muted">{{ $store['sub'] }}</p>
-                                <p class="text-xs font-semibold text-text-sec">{{ $store['label'] }}</p>
+                                <p class="text-[8px] text-text-muted">Coming soon to</p>
+                                <p class="text-xs font-semibold text-text-sec">App Store</p>
                             </div>
                         </div>
-                        @endforeach
+                        {{-- Android: live, links to two-step section below --}}
+                        <a href="#get-the-app"
+                           class="flex h-10 items-center gap-2 rounded-lg px-4 bru-border hs-4 bg-obsidian text-white"
+                           aria-label="Join the Android open testing — how to install Zelta on Android">
+                            <div>
+                                <p class="text-[8px] uppercase tracking-wider opacity-70">Get it on</p>
+                                <p class="text-xs font-bold">Google Play (beta)</p>
+                            </div>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -487,6 +496,75 @@
 
         {{-- Bottom border --}}
         <div class="absolute bottom-0 left-0 right-0 h-1 bg-obsidian"></div>
+    </section>
+
+
+    {{-- ═══════════════════════════════════════════════════════════════
+         GET THE APP — Android open testing
+    ═══════════════════════════════════════════════════════════════ --}}
+    @php
+        $androidUtm = '?utm_source=zelta_landing&utm_medium=cta&utm_campaign=android_open_test';
+        $androidOptInUrl = 'https://play.google.com/apps/testing/com.zelta.wallet' . $androidUtm;
+        $androidInstallUrl = 'https://play.google.com/store/apps/details?id=com.zelta.wallet' . $androidUtm;
+    @endphp
+    <section id="get-the-app" class="relative px-5 py-20 md:py-24 bg-white" style="border-bottom: 4px solid #0a0a0a;">
+        <div class="mx-auto max-w-4xl">
+            <div class="mb-10 text-center">
+                <p class="mb-3 text-[10px] uppercase tracking-[0.3em] font-mono text-text-muted">Open Testing</p>
+                <h2 class="text-4xl md:text-5xl font-black font-heading tracking-tighter" style="transform: rotate(-1deg);">
+                    {{ $brand }} is live on Android.
+                </h2>
+                <p class="mt-4 text-base md:text-lg text-text-sec max-w-2xl mx-auto">
+                    Two quick steps to install — both required, even on desktop. The opt-in link below has to be tapped once before the Play Store will install the app on your phone.
+                </p>
+            </div>
+
+            <ol class="grid gap-6 md:grid-cols-2">
+                {{-- Step 1: Become a tester --}}
+                <li class="relative bg-bg-tertiary bru-card rounded-3xl p-7 flex flex-col">
+                    <div class="absolute -top-5 -left-3 w-12 h-12 rounded-2xl bg-obsidian text-white font-black flex items-center justify-center text-2xl bru-border font-heading" style="transform: rotate(-6deg);">1</div>
+                    <h3 class="mt-2 text-2xl font-black font-heading tracking-tighter">Become a tester</h3>
+                    <p class="mt-3 text-sm md:text-base text-text-sec flex-1">
+                        Open this on any device — phone or desktop — and tap <strong>Become a tester</strong>. This step is mandatory: without it the Play listing shows &ldquo;Item not found&rdquo;.
+                    </p>
+                    <a href="{{ $androidOptInUrl }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="btn-hover mt-6 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-bold bru-card bg-acid text-obsidian">
+                        Join the Android beta (web)
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17L17 7M17 7H8M17 7v9"/></svg>
+                    </a>
+                </li>
+
+                {{-- Step 2: Install from Google Play --}}
+                <li class="relative bg-bg-tertiary bru-card rounded-3xl p-7 flex flex-col">
+                    <div class="absolute -top-5 -left-3 w-12 h-12 rounded-2xl bg-obsidian text-white font-black flex items-center justify-center text-2xl bru-border font-heading" style="transform: rotate(6deg);">2</div>
+                    <h3 class="mt-2 text-2xl font-black font-heading tracking-tighter">Install from Google Play</h3>
+                    <p class="mt-3 text-sm md:text-base text-text-sec flex-1">
+                        After joining as a tester, open the Play Store on your Android phone and install {{ $brand }} from the listing below.
+                    </p>
+                    <a href="{{ $androidInstallUrl }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       aria-label="Get {{ $brand }} on Google Play"
+                       class="mt-6 inline-block">
+                        <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+                             alt="Get it on Google Play"
+                             loading="lazy"
+                             style="height: 60px; width: auto;">
+                    </a>
+                </li>
+            </ol>
+
+            {{-- iOS waitlist pointer --}}
+            <div class="mt-12 text-center bg-bg-tertiary rounded-3xl bru-border p-6 md:p-8 max-w-2xl mx-auto">
+                <p class="text-sm md:text-base font-medium">
+                    <span class="font-black font-heading tracking-tighter">iOS is coming soon.</span>
+                    <a href="#cta" class="underline decoration-2 underline-offset-4 hover:text-z-purple">Sign up</a>
+                    to get notified when TestFlight opens.
+                </p>
+            </div>
+        </div>
     </section>
 
 
