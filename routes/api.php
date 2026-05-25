@@ -372,6 +372,8 @@ Route::prefix('v1/user')->name('api.v1.user.')
             ->name('bridge-setup-status');
         Route::post('/bridge-kyc-link', [App\Http\Controllers\Api\V1\BridgeSetupController::class, 'kycLink'])
             ->name('bridge-kyc-link');
+        Route::post('/bridge-va-provision', [App\Http\Controllers\Api\V1\BridgeSetupController::class, 'provisionVirtualAccount'])
+            ->name('bridge-va-provision');
     });
 
 // v5.14.0 — Alchemy Address Activity Webhook (no auth, HMAC verified)

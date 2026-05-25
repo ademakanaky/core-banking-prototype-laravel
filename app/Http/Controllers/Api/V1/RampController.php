@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Ramp\Contracts\RampProviderInterface;
+use App\Domain\Ramp\Exceptions\QuoteExpiredException;
 use App\Domain\Ramp\Services\RampService;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\V1\RampSessionResource;
@@ -135,6 +136,12 @@ class RampController extends Controller
             return response()->json([
                 'data' => new RampSessionResource($session),
             ], 201);
+        } catch (QuoteExpiredException $e) {
+            // Specific code so mobile can render "Quote expired, refresh"
+            // instead of a generic toast. Quote's `validUntil` is 60s.
+            return response()->json([
+                'error' => ['code' => 'ERR_RAMP_QUOTE_EXPIRED', 'message' => $e->getMessage()],
+            ], 422);
         } catch (RuntimeException $e) {
             return response()->json([
                 'error' => ['code' => 'SESSION_ERROR', 'message' => $e->getMessage()],

@@ -6,6 +6,7 @@ namespace App\Domain\Ramp\Services;
 
 use App\Domain\Ramp\Contracts\RampProviderInterface;
 use App\Domain\Ramp\Exceptions\InvalidWebhookSignatureException;
+use App\Domain\Ramp\Exceptions\QuoteExpiredException;
 use App\Models\RampSession;
 use App\Models\User;
 use Closure;
@@ -24,6 +25,14 @@ class RampService
     private const ZELTA_MARKUP_BPS_FREE = 75;
 
     private const ZELTA_MARKUP_BPS_PRO = 0;
+
+    /**
+     * Validity window for stateless quote_ids (matches the `validUntil`
+     * returned from GET /api/v1/ramp/quotes). Quote_ids in the
+     * `qt_<timestamp>_<random>` format older than this are rejected at
+     * createSession with QuoteExpiredException → ERR_RAMP_QUOTE_EXPIRED.
+     */
+    private const QUOTE_TTL_SECONDS = 60;
 
     /**
      * @param  Closure(User): string|null  $tierResolver  Returns 'free' or 'pro' for the given user.
@@ -133,6 +142,28 @@ class RampService
         return bcadd($str, '0', 2);
     }
 
+    /**
+     * Reject expired quote_ids of the form `qt_<unix_timestamp>_<random>`
+     * (issued by BridgeProvider::getQuotes — see also docs/adr/0006).
+     * Other providers' quote_id formats pass through unchecked — their
+     * freshness semantics are owned by them.
+     *
+     * @throws QuoteExpiredException
+     */
+    private function validateQuoteFreshness(?string $quoteId): void
+    {
+        if ($quoteId === null || ! preg_match('/^qt_(\d+)_[0-9a-f]+$/', $quoteId, $matches)) {
+            return;
+        }
+
+        $issuedAt = (int) $matches[1];
+        $now = time();
+
+        if (($now - $issuedAt) > self::QUOTE_TTL_SECONDS) {
+            throw new QuoteExpiredException($issuedAt, $now, self::QUOTE_TTL_SECONDS);
+        }
+    }
+
     private function resolveTier(?User $user): string
     {
         if ($user === null || $this->tierResolver === null) {
@@ -154,7 +185,14 @@ class RampService
         ?string $quoteId = null,
     ): RampSession {
         $this->validateRampParams($type, $fiatCurrency, $fiatAmount, $cryptoCurrency);
+        $this->validateQuoteFreshness($quoteId);
 
+        // user_id is part of the additive shape per RampProviderInterface
+        // (PR #1091). BridgeProvider requires it to scope per-user state
+        // like the bridge_customers row; other providers may ignore it.
+        // Latent gap fix: PR #1091 documented the param on the interface
+        // but never threaded it through here; first real Bridge session
+        // attempt would have failed.
         $providerResult = $this->provider->createSession([
             'type'            => $type,
             'fiat_currency'   => $fiatCurrency,
@@ -162,6 +200,7 @@ class RampService
             'crypto_currency' => $cryptoCurrency,
             'wallet_address'  => $walletAddress,
             'quote_id'        => $quoteId,
+            'user_id'         => $user->id,
         ]);
 
         $sessionData = [

@@ -35,6 +35,14 @@ final class BridgePostKycHandler
 
     private const DEFAULT_VA_ASSET = 'usdc';
 
+    /**
+     * Deep-link route mobile uses on push notification tap. Hardcoded for v1
+     * because the Bridge surface has exactly one screen mobile would route to
+     * regardless of event type. If we later add separate KYC vs deposit
+     * screens, factor this into a per-event const.
+     */
+    private const MOBILE_ROUTE = '/flows/bridge-setup';
+
     public function __construct(
         private readonly BridgeClient $client,
         private readonly PushNotificationService $push,
@@ -59,7 +67,10 @@ final class BridgePostKycHandler
             type: 'bridge.kyc.completed',
             title: 'Identity verification approved',
             body: 'You can now buy and sell crypto with bank transfers.',
-            data: ['bridge_customer_id' => $customer->bridge_customer_id],
+            data: [
+                'bridge_customer_id' => $customer->bridge_customer_id,
+                'route'              => self::MOBILE_ROUTE,
+            ],
         );
 
         $this->tryProvisionVirtualAccount($customer);
@@ -102,7 +113,10 @@ final class BridgePostKycHandler
             type: 'bridge.kyc.rejected',
             title: 'Identity verification not approved',
             body: $reason ?? 'Please contact support for next steps.',
-            data: ['bridge_customer_id' => $customer->bridge_customer_id],
+            data: [
+                'bridge_customer_id' => $customer->bridge_customer_id,
+                'route'              => self::MOBILE_ROUTE,
+            ],
         );
     }
 
