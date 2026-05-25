@@ -29,6 +29,11 @@ php artisan account:provision-reviewer --email=appreview@... --operator-email=ad
 php artisan account:list-reviewers
 php artisan account:disable-reviewer --email=X          # or --all-expired
 php artisan account:purge-reviewer --email=X --confirm  # anonymizes email + disables
+
+# Bridge.xyz ramp ops
+php artisan bridge:inspect-user user@example.com         # print bridge_customer + va + ramp sessions
+php artisan bridge:sync-dev-fee --email=user@example.com # reconcile dev_fee_bps with current tier
+php artisan bridge:sync-dev-fee --all --dry-run          # batch backfill (preview mode)
 ```
 
 ## Architecture
@@ -183,6 +188,28 @@ Plan B mobile-driven subscriptions (Apple App Store + Google Play). Entry point:
 | Apple JWS verification bypass slips into prod | `APPLE_JWS_VERIFICATION_BYPASS=true` is the auth bypass for the entire Apple IAP surface. Guard at deployment time (env diff, smoke test that prod verifier rejects a known-bad JWS) |
 | Privy `/passwordless/*` returns 403 "Must specify origin" | `PrivyEmailOtpClient` sends `Origin: <web origin>` from `config('privy.web_origin')` (env: `PRIVY_WEB_ORIGIN`, falls back to `app.url`). Origin must also be on Privy dashboard → Allowed origins. Mobile JWT path is unaffected |
 | `POST /api/v1/notifications/register-device` returns 409 after a Privy account switch | `MobileDeviceService::registerDevice` only blocks reassignment for **credential-bound** devices (`biometric_enabled` or `passkey_enabled`) — those still throw `DeviceTakeoverAttemptException` → **HTTP 409 + `DEVICE_REGISTERED_TO_DIFFERENT_USER`**. Push-only devices (no bound credentials) are reassigned automatically on re-registration, with an audit row written to `device_reassignment_log`. Recovery for credential-bound devices: operator-only `php artisan mobile:reassign-device --device-id=X --to-user=Y --operator-email=Z --confirm` (never raw SQL) |
+
+## Bridge.xyz Ramp (v7.15.0+)
+
+Primary v1 fiat ↔ stablecoin rail (bank transfers in/out, USDC on Polygon). Domain: `app/Domain/Compliance/Kyc/` (Kyc abstraction lives under Compliance, not its own top-level domain) + `app/Infrastructure/Bridge/` (HTTP client + webhook verifier shared between Ramp + Kyc). Persistence: `bridge_customers`, `ramp_sessions` (gains `deposit_instructions` encrypted + `source` enum).
+
+- **Webhook URL**: `POST /api/v1/webhooks/bridge` — single endpoint for both KYC (`customer.kyc_link_*`) and ramp (`virtual_account.activity`, `transfer.*`) events. Event-level dedupe via `processed_webhook_events (provider='bridge', event_id)`. Configure Bridge dashboard to POST here.
+- **Setup endpoints** (mobile-facing, no `require.kyc` middleware): `GET /api/v1/user/bridge-setup-status` + `POST /api/v1/user/bridge-kyc-link`. Lazy Bridge customer creation on first kyc-link request with `Idempotency-Key: bridge_customer:{user_id}`.
+- **Markup mechanism** (ADR-0006): per-customer `developer_fee_bps` on Bridge customer record — Free=75, Pro=0. Auto-PATCHed via `SubscriptionTierChanged` event listener wired in `KycServiceProvider::boot`. Operator command `bridge:sync-dev-fee` for manual reconciliation.
+- **VA provisioning**: auto-triggered on `customer.kyc_link_completed` if user has a Polygon address in `blockchain_addresses`; if not, `BlockchainAddressBridgeObserver` retries when the address is registered later.
+- **WS events** on `private-user.{userId}`: `bridge.kyc.completed`, `bridge.kyc.rejected`, `bridge.virtual_account.ready`. Push notification fallback fires on the two KYC terminals only (per the locked grilling decision in PR #1090 reply).
+- ADRs: `docs/adr/0005-bridge-xyz-over-stripe-crypto-onramp.md` (why Bridge, not Stripe Crypto Onramp); `docs/adr/0006-bridge-developer-fees-as-markup-mechanism.md` (how the 0.75% Zelta markup physically flows). Ops runbook: `docs/operations/bridge-ramp.md`.
+
+| Pitfall | Fix |
+|---|---|
+| `users.kyc_status` confused with Bridge KYC | `users.kyc_status` is **Ondato/TrustCert** (existing). Bridge KYC state lives in `bridge_customers.kyc_status` — partitioned per §7.5 of the brief. Never conflate the two |
+| `blockchain_addresses.user_id` lookup returns no row | The FK is `user_uuid` (links to `users.uuid`), NOT `user_id`. `BridgePostKycHandler` and `BlockchainAddressBridgeObserver` both use `where('user_uuid', $user->uuid)` |
+| Bridge webhook signature scheme | Currently assumed Stripe-style `t=<ts>,v1=<hex_hmac>` in `BridgeWebhookVerifier`. Verify against a real Bridge sandbox payload before first prod deploy — TODO marker in the file |
+| `RAMP_PROVIDER=stripe_bridge` still in deployed `.env` | Recognised as a deprecated alias (logged warning) that resolves to `stripe_crypto_onramp` (the renamed scaffolding from ADR-0005). Update `.env` to the canonical name; alias removal in v1.1 |
+| `BridgeWebhookVerifier` returns true with empty secret | Only in non-production environments (dev convenience). Production with no `BRIDGE_WEBHOOK_SECRET` returns false → 401 on every webhook. Set the secret before going live |
+| Bridge offramp (`type=off`) throws RuntimeException | v1 is bank-rail onramp only per the brief. Offramp lands in v1.1 alongside SWIFT support and additional networks (Solana, Base, Arbitrum) |
+| VA never gets created after KYC approval | User had no Polygon `blockchain_addresses` row at KYC-completion time. `BlockchainAddressBridgeObserver` auto-retries when the address is registered; if the row already exists, run `php artisan bridge:inspect-user --email=X` to confirm state and re-trigger by deleting + re-creating the address (or call `BridgePostKycHandler::tryProvisionVirtualAccount` from tinker) |
+| Cross-domain ordering | KycServiceProvider attaches a second observer on `BlockchainAddress` (separate from Wallet/BlockchainAddressObserver which handles Helius/Solana sync). The two observers fire independently; don't merge their concerns |
 
 ## Notes
 

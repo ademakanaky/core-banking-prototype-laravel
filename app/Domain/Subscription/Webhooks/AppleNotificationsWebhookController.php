@@ -22,6 +22,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Subscription\Webhooks;
 
+use App\Domain\Subscription\Events\SubscriptionTierChanged;
 use App\Domain\Subscription\Iap\AppleReceiptVerifier;
 use App\Domain\Subscription\Iap\IapReceiptPseudonymiser;
 use App\Domain\Subscription\Iap\IapSubscriptionService;
@@ -33,6 +34,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
@@ -264,6 +266,7 @@ final class AppleNotificationsWebhookController
 
             $this->appendEvent($sub, 'AppleSubscriptionResubscribed', $tx);
             $this->writeOutbox($sub, $notificationUuid, 'iap_subscription_reactivated', $tx);
+            $this->dispatchTierChange($sub, 'apple_iap.subscribed.resubscribe');
 
             return;
         }
@@ -322,6 +325,7 @@ final class AppleNotificationsWebhookController
         $this->appendEvent($sub, 'AppleSubscriptionRenewed', $tx);
 
         $this->writeOutbox($sub, $notificationUuid, 'iap_subscription_renewal', $tx);
+        $this->dispatchTierChange($sub, 'apple_iap.did_renew');
     }
 
     /**
@@ -447,6 +451,8 @@ final class AppleNotificationsWebhookController
             eventKind: 'iap_refund',
             payload: $payload,
         );
+
+        $this->dispatchTierChange($sub, 'apple_iap.refund');
     }
 
     /**
@@ -474,6 +480,7 @@ final class AppleNotificationsWebhookController
             $sub->save();
 
             $this->appendEvent($sub, 'AppleRefundDeclined', $tx);
+            $this->dispatchTierChange($sub, 'apple_iap.refund_declined');
         }
     }
 
@@ -517,6 +524,26 @@ final class AppleNotificationsWebhookController
         $sub->save();
 
         $this->appendEvent($sub, $eventClass, $tx);
+
+        // Tier may have flipped on any status change (active ↔ expired ↔
+        // refunded ↔ revoked). Listeners (Compliance/Kyc dev-fee PATCH per
+        // ADR-0006) re-read tier from SubscriptionProjection rather than
+        // trusting any payload here.
+        $this->dispatchTierChange($sub, 'apple_iap.' . strtolower($payload['notificationType'] ?? 'status_changed'));
+    }
+
+    /**
+     * Dispatched after every IapSubscription status mutation so cross-domain
+     * listeners (Compliance/Kyc BridgeDeveloperFeeSync) can reconcile.
+     * SubscriptionProjection is the source of truth for current tier — this
+     * event is only a "re-check me" signal.
+     */
+    private function dispatchTierChange(IapSubscription $sub, string $source): void
+    {
+        Event::dispatch(new SubscriptionTierChanged(
+            userId: (int) $sub->user_id,
+            source: $source,
+        ));
     }
 
     /**
