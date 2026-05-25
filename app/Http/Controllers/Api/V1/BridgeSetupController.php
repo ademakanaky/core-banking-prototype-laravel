@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Account\Models\BlockchainAddress;
 use App\Domain\Compliance\Kyc\Enums\KycPurpose;
 use App\Domain\Compliance\Kyc\Models\BridgeCustomer;
 use App\Domain\Compliance\Kyc\Registries\KycProviderRouter;
+use App\Domain\Compliance\Kyc\Services\BridgePostKycHandler;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,6 +29,7 @@ class BridgeSetupController extends Controller
 {
     public function __construct(
         private readonly KycProviderRouter $router,
+        private readonly BridgePostKycHandler $postKyc,
     ) {
     }
 
@@ -115,6 +118,69 @@ class BridgeSetupController extends Controller
         return response()->json([
             'url'       => $url,
             'expiresAt' => $expiresAt?->toIso8601String(),
+        ]);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/user/bridge-va-provision',
+        operationId: 'v1UserBridgeVaProvision',
+        tags: ['Bridge Setup'],
+        summary: 'Trigger Bridge virtual account provisioning for the authenticated user',
+        description: 'Idempotent retry path for the ramp screen: if KYC is approved + a Polygon address exists + no VA yet, calls Bridge to provision one. Mobile calls this on screen mount when bridge-setup-status reports kycStatus=approved && !virtualAccountReady.',
+        security: [['sanctum' => []]],
+    )]
+    #[OA\Response(
+        response: 200,
+        description: 'Current VA state after the provisioning attempt. virtualAccountReady=false means Bridge is still processing OR the call failed (check /bridge-setup-status again, listen for bridge.virtual_account.ready WS event).',
+        content: new OA\JsonContent(properties: [
+        new OA\Property(property: 'virtualAccountReady', type: 'boolean', example: true),
+        new OA\Property(property: 'supportedRails', type: 'array', items: new OA\Items(type: 'string', enum: ['ach', 'sepa', 'sepa_instant'])),
+        ])
+    )]
+    #[OA\Response(response: 401, description: 'Unauthenticated')]
+    #[OA\Response(response: 409, description: 'KYC not approved, no Polygon address, or VA already provisioned')]
+    public function provisionVirtualAccount(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_if($user === null, 401);
+
+        $customer = BridgeCustomer::where('user_id', $user->id)->first();
+
+        if ($customer === null || ! $customer->isKycApproved()) {
+            return response()->json([
+                'error'   => 'KYC_NOT_APPROVED',
+                'message' => 'Complete Bridge KYC before provisioning a virtual account.',
+            ], 409);
+        }
+
+        if ($customer->hasVirtualAccount()) {
+            return response()->json([
+                'error'   => 'VA_ALREADY_PROVISIONED',
+                'message' => 'A virtual account is already provisioned for this user.',
+            ], 409);
+        }
+
+        $hasPolygonAddress = BlockchainAddress::where('user_uuid', $user->uuid)
+            ->where('chain', 'polygon')
+            ->exists();
+
+        if (! $hasPolygonAddress) {
+            return response()->json([
+                'error'   => 'NO_POLYGON_ADDRESS',
+                'message' => 'Register a Polygon wallet address before provisioning a virtual account.',
+            ], 409);
+        }
+
+        // Idempotent at the Bridge layer via Idempotency-Key=bridge_va:{userId}.
+        // Failures are swallowed + logged inside the handler; we surface the
+        // resulting state via a fresh read of bridge_customers.
+        $this->postKyc->tryProvisionVirtualAccount($customer);
+
+        $customer->refresh();
+
+        return response()->json([
+            'virtualAccountReady' => $customer->hasVirtualAccount(),
+            'supportedRails'      => $customer->supported_rails ?? [],
         ]);
     }
 }

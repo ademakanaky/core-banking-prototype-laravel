@@ -299,6 +299,16 @@ class StripeCryptoOnrampService
 
     /**
      * Map crypto symbol to its network for Stripe.
+     *
+     * TODO (v1.1 enablement): this hardcodes `ethereum` for USDC/USDT/ETH and
+     * the default branch. BridgeProvider's createSession was parameterized
+     * (`network` param, default `polygon`) per handover §3.4, but this legacy
+     * Stripe Crypto Onramp service body was preserved as-is during the PR
+     * #1090 rename. Before re-enabling `stripe_crypto_onramp` as the
+     * card-payment fallback (ADR-0005), this method should accept the
+     * destination network as a parameter so v1.1 quote/session requests can
+     * route to polygon/base/etc. The provider's createSession already takes
+     * the network in params; just thread it through.
      */
     private function mapNetwork(string $crypto): string
     {

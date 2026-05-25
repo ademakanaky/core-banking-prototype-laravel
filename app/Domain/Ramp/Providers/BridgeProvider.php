@@ -204,10 +204,17 @@ class BridgeProvider implements RampProviderInterface
         // a small implicit FX spread we don't unbundle in v1.
         $cryptoAmount = (float) bcsub($amount, $bridgeFee, 4);
 
+        // Stateless quote_id: encodes the issue timestamp + random tail so
+        // RampService can validate freshness at createSession time without a
+        // DB lookup. Format: qt_<unix_ts>_<8-hex>. RampService matches on
+        // the `qt_` prefix and decodes the timestamp; other providers'
+        // quote_id formats are passed through unchecked.
+        $quoteId = sprintf('qt_%d_%s', time(), bin2hex(random_bytes(4)));
+
         return [
             [
                 'provider_name'   => 'Bridge',
-                'quote_id'        => null,  // Bridge has no hosted quote endpoint
+                'quote_id'        => $quoteId,
                 'fiat_amount'     => (float) $amount,
                 'crypto_amount'   => $cryptoAmount,
                 'exchange_rate'   => 1.0,
