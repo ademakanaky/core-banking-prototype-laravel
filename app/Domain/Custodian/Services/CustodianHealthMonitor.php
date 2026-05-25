@@ -42,7 +42,7 @@ class CustodianHealthMonitor
     {
         $health = [];
 
-        foreach ($this->registry->getAllConnectorNames() as $custodian) {
+        foreach ($this->registry->names() as $custodian) {
             $health[$custodian] = $this->getCustodianHealth($custodian);
         }
 
@@ -228,7 +228,7 @@ class CustodianHealthMonitor
     {
         $healthScores = [];
 
-        foreach ($this->registry->getAllConnectorNames() as $custodian) {
+        foreach ($this->registry->names() as $custodian) {
             $health = $this->getCustodianHealth($custodian);
 
             // Calculate health score (0-100)
