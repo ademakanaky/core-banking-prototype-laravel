@@ -576,9 +576,9 @@
                 {{-- Connector arrow (purely decorative; aria-hidden) --}}
                 <li class="flex md:flex-col items-center justify-center list-none" role="presentation" aria-hidden="true">
                     {{-- Mobile (down) --}}
-                    <svg class="md:hidden w-8 h-8 text-obsidian" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12l7 7 7-7"/></svg>
+                    <svg class="md:hidden text-obsidian" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12l7 7 7-7"/></svg>
                     {{-- Desktop (right) --}}
-                    <svg class="hidden md:block w-10 h-10 text-obsidian" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    <svg class="hidden md:block text-obsidian" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
                 </li>
 
                 {{-- Step 2: Install from Google Play --}}
