@@ -56,6 +56,12 @@
         .py-16 { padding-top: 4rem; padding-bottom: 4rem; }
         .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
+        /* ── #get-the-app install grid (Step 1 | arrow | Step 2) ── */
+        .install-grid { display: grid; grid-template-columns: 1fr; }
+        @media (min-width: 768px) {
+            .install-grid { grid-template-columns: 1fr auto 1fr; }
+        }
+
         /* ── Brutalist utilities ── */
         .bru-border { border: 3px solid #0a0a0a; }
         .bru-card { border: 3px solid #0a0a0a; box-shadow: 6px 6px 0px #0a0a0a; }
@@ -507,62 +513,106 @@
         $androidOptInUrl = 'https://play.google.com/apps/testing/com.zelta.wallet' . $androidUtm;
         $androidInstallUrl = 'https://play.google.com/store/apps/details?id=com.zelta.wallet' . $androidUtm;
     @endphp
-    <section id="get-the-app" class="relative px-5 py-20 md:py-24 bg-white" style="border-bottom: 4px solid #0a0a0a;">
-        <div class="mx-auto max-w-4xl">
-            <div class="mb-10 text-center">
-                <p class="mb-3 text-[10px] uppercase tracking-[0.3em] font-mono text-text-muted">Open Testing</p>
-                <h2 class="text-4xl md:text-5xl font-black font-heading tracking-tighter" style="transform: rotate(-1deg);">
-                    {{ $brand }} is live on Android.
+    <section id="get-the-app" class="relative px-5 py-20 md:py-28 overflow-hidden"
+             style="background: linear-gradient(160deg, #a8f0c4 0%, #c0f5d6 45%, #c8a8f0 100%);">
+
+        {{-- Decorative sticker --}}
+        <div class="absolute hidden md:block pointer-events-none select-none"
+             style="top: 8%; right: 6%; transform: rotate(12deg);" aria-hidden="true">
+            <div class="rounded-2xl overflow-hidden bru-card-sm" style="width: 72px; height: 72px;">
+                <img src="/icons/smartphone.svg" alt="" class="h-full w-full">
+            </div>
+        </div>
+
+        <div class="relative z-10 mx-auto max-w-5xl">
+
+            {{-- Header --}}
+            <div class="text-center mb-12 md:mb-14">
+                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-obsidian text-white text-xs font-bold mb-6 font-mono uppercase tracking-wider"
+                     style="transform: rotate(-1.5deg);">
+                    <span class="w-2 h-2 rounded-full bg-acid animate-pulse"></span>
+                    Live · Android Open Beta
+                </div>
+                <h2 class="text-4xl sm:text-5xl md:text-6xl font-black font-heading tracking-tighter leading-[0.95]">
+                    Get {{ $brand }} on <span class="text-z-purple">Android</span> today.
                 </h2>
-                <p class="mt-4 text-base md:text-lg text-text-sec max-w-2xl mx-auto">
-                    Two quick steps to install — both required, even on desktop. The opt-in link below has to be tapped once before the Play Store will install the app on your phone.
+                <p class="mt-5 text-base md:text-lg text-text-sec max-w-2xl mx-auto font-medium">
+                    Open testing is live. Two quick steps — both required, even on desktop — and you're in.
                 </p>
+
+                {{-- Trust pills --}}
+                <div class="mt-6 flex flex-wrap justify-center gap-2">
+                    @foreach(['Free to join', 'No payment info', 'Leave anytime'] as $pill)
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-white bru-border px-3.5 py-1 text-xs font-bold">
+                        <svg class="w-3 h-3 text-z-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        {{ $pill }}
+                    </span>
+                    @endforeach
+                </div>
             </div>
 
-            <ol class="grid gap-6 md:grid-cols-2">
+            {{-- Install card --}}
+            <ol class="install-grid relative bg-white bru-card-lg rounded-3xl p-6 md:p-10 gap-8">
+
                 {{-- Step 1: Become a tester --}}
-                <li class="relative bg-bg-tertiary bru-card rounded-3xl p-7 flex flex-col">
-                    <div class="absolute -top-5 -left-3 w-12 h-12 rounded-2xl bg-obsidian text-white font-black flex items-center justify-center text-2xl bru-border font-heading" style="transform: rotate(-6deg);">1</div>
-                    <h3 class="mt-2 text-2xl font-black font-heading tracking-tighter">Become a tester</h3>
-                    <p class="mt-3 text-sm md:text-base text-text-sec flex-1">
-                        Open this on any device — phone or desktop — and tap <strong>Become a tester</strong>. This step is mandatory: without it the Play listing shows &ldquo;Item not found&rdquo;.
+                <li class="flex flex-col">
+                    <div class="flex items-center gap-3 mb-3">
+                        <span class="flex w-9 h-9 items-center justify-center rounded-xl bg-acid bru-border font-black font-heading text-lg">1</span>
+                        <span class="text-[10px] uppercase font-mono text-text-muted" style="letter-spacing: 0.25em;">Step one</span>
+                    </div>
+                    <h3 class="text-2xl md:text-3xl font-black font-heading tracking-tighter leading-tight">Become a tester.</h3>
+                    <p class="mt-2 text-sm md:text-base text-text-sec flex-1">
+                        Tap once on any device — phone or desktop. Without this, the Play listing shows &ldquo;Item not found&rdquo;.
                     </p>
                     <a href="{{ $androidOptInUrl }}"
                        target="_blank"
                        rel="noopener noreferrer"
-                       class="btn-hover mt-6 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-bold bru-card bg-acid text-obsidian">
-                        Join the Android beta (web)
+                       class="btn-hover mt-5 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-bold bru-card bg-obsidian text-white">
+                        Join the Android beta
                         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17L17 7M17 7H8M17 7v9"/></svg>
                     </a>
                 </li>
 
+                {{-- Connector arrow (purely decorative; aria-hidden) --}}
+                <li class="flex md:flex-col items-center justify-center list-none" role="presentation" aria-hidden="true">
+                    {{-- Mobile (down) --}}
+                    <svg class="md:hidden w-8 h-8 text-obsidian" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12l7 7 7-7"/></svg>
+                    {{-- Desktop (right) --}}
+                    <svg class="hidden md:block w-10 h-10 text-obsidian" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </li>
+
                 {{-- Step 2: Install from Google Play --}}
-                <li class="relative bg-bg-tertiary bru-card rounded-3xl p-7 flex flex-col">
-                    <div class="absolute -top-5 -left-3 w-12 h-12 rounded-2xl bg-obsidian text-white font-black flex items-center justify-center text-2xl bru-border font-heading" style="transform: rotate(6deg);">2</div>
-                    <h3 class="mt-2 text-2xl font-black font-heading tracking-tighter">Install from Google Play</h3>
-                    <p class="mt-3 text-sm md:text-base text-text-sec flex-1">
-                        After joining as a tester, open the Play Store on your Android phone and install {{ $brand }} from the listing below.
+                <li class="flex flex-col">
+                    <div class="flex items-center gap-3 mb-3">
+                        <span class="flex w-9 h-9 items-center justify-center rounded-xl bg-z-purple bru-border font-black font-heading text-lg">2</span>
+                        <span class="text-[10px] uppercase font-mono text-text-muted" style="letter-spacing: 0.25em;">Step two</span>
+                    </div>
+                    <h3 class="text-2xl md:text-3xl font-black font-heading tracking-tighter leading-tight">Install from Google Play.</h3>
+                    <p class="mt-2 text-sm md:text-base text-text-sec flex-1">
+                        Open the Play Store on your Android phone and install {{ $brand }}.
                     </p>
                     <a href="{{ $androidInstallUrl }}"
                        target="_blank"
                        rel="noopener noreferrer"
                        aria-label="Get {{ $brand }} on Google Play"
-                       class="mt-6 inline-block">
+                       class="btn-hover mt-5 inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 bru-border self-start">
                         <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
                              alt="Get it on Google Play"
                              loading="lazy"
-                             style="height: 60px; width: auto;">
+                             style="height: 44px; width: auto;">
                     </a>
                 </li>
             </ol>
 
-            {{-- iOS waitlist pointer --}}
-            <div class="mt-12 text-center bg-bg-tertiary rounded-3xl bru-border p-6 md:p-8 max-w-2xl mx-auto">
-                <p class="text-sm md:text-base font-medium">
-                    <span class="font-black font-heading tracking-tighter">iOS is coming soon.</span>
-                    <a href="#cta" class="underline decoration-2 underline-offset-4 hover:text-z-purple">Sign up</a>
-                    to get notified when TestFlight opens.
-                </p>
+            {{-- iOS waitlist row --}}
+            <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 text-center">
+                <span class="inline-flex items-center gap-2 rounded-full bru-border px-4 py-2 text-sm font-bold font-mono" style="background: rgba(255,255,255,0.7);">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    iOS · TestFlight coming soon
+                </span>
+                <a href="#cta" class="text-sm font-bold underline decoration-2 underline-offset-4 hover:text-z-purple">
+                    Notify me when it opens &rarr;
+                </a>
             </div>
         </div>
     </section>
