@@ -544,7 +544,7 @@
                 <div class="mt-6 flex flex-wrap justify-center gap-2">
                     @foreach(['Free to join', 'No payment info', 'Leave anytime'] as $pill)
                     <span class="inline-flex items-center gap-1.5 rounded-full bg-white bru-border px-3.5 py-1 text-xs font-bold">
-                        <svg class="w-3 h-3 text-z-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        <svg class="text-z-green" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                         {{ $pill }}
                     </span>
                     @endforeach
@@ -567,9 +567,9 @@
                     <a href="{{ $androidOptInUrl }}"
                        target="_blank"
                        rel="noopener noreferrer"
-                       class="btn-hover mt-5 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-bold bru-card bg-obsidian text-white">
+                       class="btn-hover mt-5 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-bold bru-card bg-obsidian text-white self-start">
                         Join the Android beta
-                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17L17 7M17 7H8M17 7v9"/></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17L17 7M17 7H8M17 7v9"/></svg>
                     </a>
                 </li>
 
@@ -607,7 +607,7 @@
             {{-- iOS waitlist row --}}
             <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 text-center">
                 <span class="inline-flex items-center gap-2 rounded-full bru-border px-4 py-2 text-sm font-bold font-mono" style="background: rgba(255,255,255,0.7);">
-                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     iOS · TestFlight coming soon
                 </span>
                 <a href="#cta" class="text-sm font-bold underline decoration-2 underline-offset-4 hover:text-z-purple">
