@@ -56,11 +56,6 @@
         .py-16 { padding-top: 4rem; padding-bottom: 4rem; }
         .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-        /* ── #get-the-app install grid (Step 1 | arrow | Step 2) ── */
-        .install-grid { display: grid; grid-template-columns: 1fr; }
-        @media (min-width: 768px) {
-            .install-grid { grid-template-columns: 1fr auto 1fr; }
-        }
 
         /* ── Brutalist utilities ── */
         .bru-border { border: 3px solid #0a0a0a; }
@@ -507,112 +502,134 @@
 
     {{-- ═══════════════════════════════════════════════════════════════
          GET THE APP — Android open testing
+
+         All layout-critical rules are scoped to #get-the-app via the
+         <style> block below — independent of the pre-compiled Tailwind
+         CSS, so cache drift on app-landing.css can't break the section.
     ═══════════════════════════════════════════════════════════════ --}}
     @php
         $androidUtm = '?utm_source=zelta_landing&utm_medium=cta&utm_campaign=android_open_test';
         $androidOptInUrl = 'https://play.google.com/apps/testing/com.zelta.wallet' . $androidUtm;
         $androidInstallUrl = 'https://play.google.com/store/apps/details?id=com.zelta.wallet' . $androidUtm;
     @endphp
-    <section id="get-the-app" class="relative px-5 py-20 md:py-28 overflow-hidden"
-             style="background: linear-gradient(160deg, #a8f0c4 0%, #c0f5d6 45%, #c8a8f0 100%);">
 
-        {{-- Decorative sticker --}}
-        <div class="absolute hidden md:block pointer-events-none select-none"
-             style="top: 8%; right: 6%; transform: rotate(12deg);" aria-hidden="true">
-            <div class="rounded-2xl overflow-hidden bru-card-sm" style="width: 72px; height: 72px;">
-                <img src="/icons/smartphone.svg" alt="" class="h-full w-full">
+    <style>
+        #get-the-app { background: linear-gradient(160deg, #a8f0c4 0%, #c0f5d6 45%, #c8a8f0 100%); }
+        #get-the-app .gta-inner { position: relative; z-index: 10; max-width: 64rem; margin: 0 auto; }
+        #get-the-app .gta-header { text-align: center; margin-bottom: 3rem; }
+        @media (min-width: 768px) { #get-the-app .gta-header { margin-bottom: 3.5rem; } }
+        #get-the-app .gta-eyebrow { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.375rem 1rem; border-radius: 9999px; background: #0a0a0a; color: #fff; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 1.5rem; transform: rotate(-1.5deg); }
+        #get-the-app .gta-eyebrow .dot { width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #ccff00; }
+        #get-the-app .gta-title { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 900; letter-spacing: -0.04em; line-height: 0.95; font-size: clamp(2.25rem, 6vw, 3.75rem); margin: 0; }
+        #get-the-app .gta-title .accent { color: #7000ff; }
+        #get-the-app .gta-lead { margin-top: 1.25rem; max-width: 38rem; margin-left: auto; margin-right: auto; font-size: 1rem; color: #444; font-weight: 500; }
+        @media (min-width: 768px) { #get-the-app .gta-lead { font-size: 1.125rem; } }
+        #get-the-app .gta-card { display: grid; grid-template-columns: 1fr; gap: 2rem; align-items: stretch; background: #fff; border: 3px solid #0a0a0a; box-shadow: 8px 8px 0 #0a0a0a; border-radius: 1.5rem; padding: 1.75rem; }
+        @media (min-width: 768px) { #get-the-app .gta-card { grid-template-columns: 1fr auto 1fr; gap: 1.5rem; padding: 2.5rem; } }
+        #get-the-app .gta-step { display: flex; flex-direction: column; min-width: 0; }
+        #get-the-app .gta-step-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+        #get-the-app .gta-num { display: inline-flex; width: 2.25rem; height: 2.25rem; align-items: center; justify-content: center; border: 3px solid #0a0a0a; border-radius: 0.75rem; font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 900; font-size: 1.125rem; flex-shrink: 0; }
+        #get-the-app .gta-num-1 { background: #ccff00; }
+        #get-the-app .gta-num-2 { background: #c8a8f0; }
+        #get-the-app .gta-step-label { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: #888; }
+        #get-the-app .gta-step-title { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 900; letter-spacing: -0.03em; line-height: 1.1; font-size: 1.5rem; margin: 0; }
+        @media (min-width: 768px) { #get-the-app .gta-step-title { font-size: 1.75rem; } }
+        #get-the-app .gta-step-body { margin: 0.5rem 0 0; font-size: 0.95rem; color: #444; flex: 1; }
+        #get-the-app .gta-cta { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; align-self: flex-start; margin-top: 1.5rem; padding: 0.95rem 1.5rem; border: 3px solid #0a0a0a; border-radius: 9999px; background: #0a0a0a; color: #fff; font-weight: 700; font-size: 1rem; text-decoration: none; box-shadow: 6px 6px 0 #0a0a0a; transition: transform 0.15s, box-shadow 0.15s; }
+        #get-the-app .gta-cta:hover { transform: translate(-2px, -2px); box-shadow: 8px 8px 0 #0a0a0a; }
+        #get-the-app .gta-cta:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #0a0a0a; }
+        #get-the-app .gta-play { display: inline-flex; align-self: flex-start; margin-top: 1.5rem; padding: 0.5rem 0.75rem; background: #0a0a0a; border: 3px solid #0a0a0a; border-radius: 0.75rem; box-shadow: 6px 6px 0 #0a0a0a; transition: transform 0.15s, box-shadow 0.15s; }
+        #get-the-app .gta-play:hover { transform: translate(-2px, -2px); box-shadow: 8px 8px 0 #0a0a0a; }
+        #get-the-app .gta-play:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #0a0a0a; }
+        #get-the-app .gta-play img { display: block; height: 44px; width: auto; }
+        #get-the-app .gta-arrow { display: flex; align-items: center; justify-content: center; padding: 0.5rem 0; }
+        @media (min-width: 768px) { #get-the-app .gta-arrow { padding: 0 0.5rem; } }
+        #get-the-app .gta-arrow .down { color: #0a0a0a; }
+        #get-the-app .gta-arrow .right { display: none; color: #0a0a0a; }
+        @media (min-width: 768px) {
+            #get-the-app .gta-arrow .down { display: none; }
+            #get-the-app .gta-arrow .right { display: block; }
+        }
+        #get-the-app .gta-ios { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 2rem; text-align: center; }
+        @media (min-width: 480px) { #get-the-app .gta-ios { flex-direction: row; gap: 0.75rem; } }
+        #get-the-app .gta-ios-pill { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border: 3px solid #0a0a0a; border-radius: 9999px; background: rgba(255,255,255,0.7); font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 700; }
+        #get-the-app .gta-ios-link { font-size: 0.9rem; font-weight: 700; color: #0a0a0a; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+        #get-the-app .gta-ios-link:hover { color: #7000ff; }
+    </style>
+
+    <section id="get-the-app" class="relative px-5 py-20 md:py-28 overflow-hidden">
+
+        {{-- Decorative phone sticker (desktop only) --}}
+        <div aria-hidden="true" style="position: absolute; top: 6%; right: 5%; transform: rotate(12deg); pointer-events: none; user-select: none;" class="hidden md:block">
+            <div style="width: 72px; height: 72px; border: 3px solid #0a0a0a; border-radius: 1rem; box-shadow: 3px 3px 0 #0a0a0a; overflow: hidden; background: #fff;">
+                <img src="/icons/smartphone.svg" alt="" style="width: 100%; height: 100%;">
             </div>
         </div>
 
-        <div class="relative z-10 mx-auto max-w-5xl">
+        <div class="gta-inner">
 
             {{-- Header --}}
-            <div class="text-center mb-12 md:mb-14">
-                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-obsidian text-white text-xs font-bold mb-6 font-mono uppercase tracking-wider"
-                     style="transform: rotate(-1.5deg);">
-                    <span class="w-2 h-2 rounded-full bg-acid animate-pulse"></span>
+            <header class="gta-header">
+                <div class="gta-eyebrow">
+                    <span class="dot animate-pulse"></span>
                     Live · Android Open Beta
                 </div>
-                <h2 class="text-4xl sm:text-5xl md:text-6xl font-black font-heading tracking-tighter leading-[0.95]">
-                    Get {{ $brand }} on <span class="text-z-purple">Android</span> today.
+                <h2 class="gta-title">
+                    Get {{ $brand }} on <span class="accent">Android</span> today.
                 </h2>
-                <p class="mt-5 text-base md:text-lg text-text-sec max-w-2xl mx-auto font-medium">
+                <p class="gta-lead">
                     Open testing is live. Two quick steps — both required, even on desktop — and you're in.
                 </p>
-
-                {{-- Trust pills --}}
-                <div class="mt-6 flex flex-wrap justify-center gap-2">
-                    @foreach(['Free to join', 'No payment info', 'Leave anytime'] as $pill)
-                    <span class="inline-flex items-center gap-1.5 rounded-full bg-white bru-border px-3.5 py-1 text-xs font-bold">
-                        <svg class="text-z-green" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                        {{ $pill }}
-                    </span>
-                    @endforeach
-                </div>
-            </div>
+            </header>
 
             {{-- Install card --}}
-            <ol class="install-grid relative bg-white bru-card-lg rounded-3xl p-6 md:p-10 gap-8">
+            <div class="gta-card">
 
                 {{-- Step 1: Become a tester --}}
-                <li class="flex flex-col">
-                    <div class="flex items-center gap-3 mb-3">
-                        <span class="flex w-9 h-9 items-center justify-center rounded-xl bg-acid bru-border font-black font-heading text-lg">1</span>
-                        <span class="text-[10px] uppercase font-mono text-text-muted" style="letter-spacing: 0.25em;">Step one</span>
+                <div class="gta-step">
+                    <div class="gta-step-head">
+                        <span class="gta-num gta-num-1">1</span>
+                        <span class="gta-step-label">Step one</span>
                     </div>
-                    <h3 class="text-2xl md:text-3xl font-black font-heading tracking-tighter leading-tight">Become a tester.</h3>
-                    <p class="mt-2 text-sm md:text-base text-text-sec flex-1">
+                    <h3 class="gta-step-title">Become a tester.</h3>
+                    <p class="gta-step-body">
                         Tap once on any device — phone or desktop. Without this, the Play listing shows &ldquo;Item not found&rdquo;.
                     </p>
-                    <a href="{{ $androidOptInUrl }}"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       class="btn-hover mt-5 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-bold bru-card bg-obsidian text-white self-start">
+                    <a href="{{ $androidOptInUrl }}" target="_blank" rel="noopener noreferrer" class="gta-cta">
                         Join the Android beta
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17L17 7M17 7H8M17 7v9"/></svg>
                     </a>
-                </li>
+                </div>
 
-                {{-- Connector arrow (purely decorative; aria-hidden) --}}
-                <li class="flex md:flex-col items-center justify-center list-none" role="presentation" aria-hidden="true">
-                    {{-- Mobile (down) --}}
-                    <svg class="md:hidden text-obsidian" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12l7 7 7-7"/></svg>
-                    {{-- Desktop (right) --}}
-                    <svg class="hidden md:block text-obsidian" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </li>
+                {{-- Connector arrow (purely decorative) --}}
+                <div class="gta-arrow" aria-hidden="true">
+                    <svg class="down" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12l7 7 7-7"/></svg>
+                    <svg class="right" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </div>
 
                 {{-- Step 2: Install from Google Play --}}
-                <li class="flex flex-col">
-                    <div class="flex items-center gap-3 mb-3">
-                        <span class="flex w-9 h-9 items-center justify-center rounded-xl bg-z-purple bru-border font-black font-heading text-lg">2</span>
-                        <span class="text-[10px] uppercase font-mono text-text-muted" style="letter-spacing: 0.25em;">Step two</span>
+                <div class="gta-step">
+                    <div class="gta-step-head">
+                        <span class="gta-num gta-num-2">2</span>
+                        <span class="gta-step-label">Step two</span>
                     </div>
-                    <h3 class="text-2xl md:text-3xl font-black font-heading tracking-tighter leading-tight">Install from Google Play.</h3>
-                    <p class="mt-2 text-sm md:text-base text-text-sec flex-1">
-                        Open the Play Store on your Android phone and install {{ $brand }}.
+                    <h3 class="gta-step-title">Install from Google Play.</h3>
+                    <p class="gta-step-body">
+                        After joining, open Google Play on your Android phone and install {{ $brand }}.
                     </p>
-                    <a href="{{ $androidInstallUrl }}"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       aria-label="Get {{ $brand }} on Google Play"
-                       class="btn-hover mt-5 inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 bru-border self-start">
-                        <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
-                             alt="Get it on Google Play"
-                             loading="lazy"
-                             style="height: 44px; width: auto;">
+                    <a href="{{ $androidInstallUrl }}" target="_blank" rel="noopener noreferrer" aria-label="Get {{ $brand }} on Google Play" class="gta-play">
+                        <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" loading="lazy">
                     </a>
-                </li>
-            </ol>
+                </div>
+            </div>
 
             {{-- iOS waitlist row --}}
-            <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 text-center">
-                <span class="inline-flex items-center gap-2 rounded-full bru-border px-4 py-2 text-sm font-bold font-mono" style="background: rgba(255,255,255,0.7);">
+            <div class="gta-ios">
+                <span class="gta-ios-pill">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     iOS · TestFlight coming soon
                 </span>
-                <a href="#cta" class="text-sm font-bold underline decoration-2 underline-offset-4 hover:text-z-purple">
-                    Notify me when it opens &rarr;
-                </a>
+                <a href="#cta" class="gta-ios-link">Notify me when it opens &rarr;</a>
             </div>
         </div>
     </section>
