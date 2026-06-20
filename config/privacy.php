@@ -327,12 +327,36 @@ return [
             ))),
             'broadcaster_enabled' => (bool) env('RAILGUN_BROADCASTER_ENABLED', true),
             // Device-facing per-network RPC URLs (key-safe: proxy or keyless).
+            // Used only when no rpc_upstream proxy is configured for the network.
             'rpc_urls' => [
                 'ethereum' => (string) env('RAILGUN_RPC_ETHEREUM', ''),
                 'polygon'  => (string) env('RAILGUN_RPC_POLYGON', ''),
                 'arbitrum' => (string) env('RAILGUN_RPC_ARBITRUM', ''),
                 'bsc'      => (string) env('RAILGUN_RPC_BSC', ''),
             ],
+
+            /*
+            | Built-in RPC proxy (preferred over rpc_urls). When an upstream is set
+            | for a network, engine-config returns a short-lived SIGNED proxy URL
+            | (POST /api/v1/privacy/rpc/{network}) instead of a client RPC URL, and
+            | the proxy injects the key server-side — so a provider API key NEVER
+            | reaches the device. These upstream URLs are server-side only and may
+            | safely contain the key. The SDK's loadProvider takes a URL string
+            | (no header injection), which is why we use signed URLs for auth.
+            */
+            'rpc_upstream' => [
+                'ethereum' => (string) env('RAILGUN_RPC_UPSTREAM_ETHEREUM', ''),
+                'polygon'  => (string) env('RAILGUN_RPC_UPSTREAM_POLYGON', ''),
+                'arbitrum' => (string) env('RAILGUN_RPC_UPSTREAM_ARBITRUM', ''),
+                'bsc'      => (string) env('RAILGUN_RPC_UPSTREAM_BSC', ''),
+            ],
+            // TTL (seconds) for the signed proxy URL; the app refetches engine-config
+            // when a proxied RPC call returns 403 (expired/invalid signature). The
+            // URL is a replayable capability token within its TTL, so keep it short
+            // — engine-config hard-caps it to [60, 900].
+            'rpc_proxy_ttl' => (int) env('RAILGUN_RPC_PROXY_TTL', 300),
+            // Per-user (signed `u`) request budget for the RPC proxy, per minute.
+            'rpc_proxy_per_minute' => (int) env('RAILGUN_RPC_PROXY_PER_MINUTE', 120),
         ],
     ],
 ];
